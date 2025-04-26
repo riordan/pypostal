@@ -39,6 +39,23 @@ jobs:
         with:
           submodules: true # Fetch the libpostal submodule
 
+      # --- Determine normalized architecture for cache key ---
+      - name: Determine Cache Arch
+        id: cache_arch
+        shell: bash
+        run: |
+          NORM_ARCH=""
+          if [[ "${{ runner.arch }}" == "X64" || "${{ runner.arch }}" == "AMD64" ]]; then
+            NORM_ARCH="x86_64"
+          elif [[ "${{ runner.arch }}" == "ARM64" || "${{ runner.arch }}" == "aarch64" ]]; then
+            NORM_ARCH="arm64"
+          else
+            # Use raw runner.arch as fallback, though unlikely for Linux/macOS
+            NORM_ARCH="${{ runner.arch }}"
+          fi
+          echo "Normalized architecture for cache key: $NORM_ARCH"
+          echo "cache_arch=$NORM_ARCH" >> $GITHUB_OUTPUT
+          
       # --- QEMU step is removed --- #
 
       # --- Add steps for caching the compiled libpostal --- #
@@ -59,11 +76,11 @@ jobs:
           # Cache the directory containing arch-specific builds
           # Path is relative to the repository root where setup.py runs
           path: build/libpostal_install_cache
-          # Key includes OS, architecture, and the submodule hash
-          key: ${{ matrix.os }}-${{ matrix.arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
+          # Key includes OS, NORMALISED architecture, and the submodule hash
+          key: ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
           # Restore key prefix in case of exact miss
           restore-keys: |
-            ${{ matrix.os }}-${{ matrix.arch }}-libpostal-cache-
+            ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-
       # -------------------------------------------------- #
       
       # Ensure the base directory for the cache exists before cibuildwheel runs

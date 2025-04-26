@@ -55,27 +55,33 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool pkg-config curl
 
-    # Autobuild attempts to build any compiled languages (C/C++).
     # It requires the necessary build tools and dependencies to be available.
-    - name: Autobuild
-      # Autobuild is primarily for compiled languages. Skip for Python.
+    # - name: Autobuild # <<<< REMOVED THIS STEP
+    #   # Autobuild is primarily for compiled languages. Skip for Python.
+    #   if: matrix.language == 'cpp'
+    #   uses: github/codeql-action/autobuild@v3
+    
+    # --- Manual Build Steps for C/C++ ---
+    # Run the build steps necessary for CodeQL to analyze the C code
+    - name: Build libpostal for CodeQL Analysis
       if: matrix.language == 'cpp'
-      uses: github/codeql-action/autobuild@v3
-      # NOTE: Autobuild might struggle with complex build systems like libpostal's.
-      # If this step fails, manual build steps might be needed here, similar to build_wheels.yml:
-      # - name: Set up Python (for setup.py)
-      #   uses: actions/setup-python@v5
-      #   with:
-      #     python-version: '3.11' # Choose a representative version
-      # - name: Build libpostal (example manual step)
-      #   run: |
-      #     cd vendor/libpostal # Path relative to pypostal checkout root
-      #     ./bootstrap.sh
-      #     ./configure --prefix=/tmp/libpostal_install
-      #     make -j$(nproc)
-      #     make install
-      #     cd ../../ # Back to pypostal root
-      #     # Potentially run python setup.py build_ext here if needed for analysis
+      run: |
+        set -e # Exit immediately if a command exits with a non-zero status.
+        pwd # Show current directory (should be pypostal root)
+        echo "--- Running bootstrap.sh ---"
+        (cd vendor/libpostal && ./bootstrap.sh) # Run bootstrap inside the submodule dir
+        echo "--- Running configure ---"
+        # Configure with a temporary prefix, doesn't really matter where it installs
+        # as CodeQL traces the compilation, not the installed files.
+        # Added --enable-static --disable-shared to match setup.py
+        (cd vendor/libpostal && ./configure --prefix=/tmp/libpostal_install --enable-static --disable-shared)
+        echo "--- Running make ---"
+        # Build using make. Use $(nproc) for parallelism if available, otherwise default jobs.
+        NPROC=$(nproc 2>/dev/null || echo 1) # Get number of processors, default to 1 if nproc fails
+        echo "Building with $NPROC cores"
+        (cd vendor/libpostal && make -j$NPROC)
+        echo "--- Build complete ---"
+      # NOTE: We don't need 'make install' for CodeQL analysis. It only needs to trace the compilation.
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
