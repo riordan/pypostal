@@ -24,7 +24,7 @@ jobs:
             arch: x86_64
             cibw_archs: "x86_64"
           - os: ubuntu-22.04-arm # Native ARM64 runner
-            arch: aarch64
+            arch: arm64
             cibw_archs: "aarch64"
           - os: macos-latest # Builds both x86_64 and arm64 via cibuildwheel default
             arch: universal

@@ -39,7 +39,19 @@ class build_ext(_build_ext):
         # Define shared, architecture-specific paths
         # Use a directory outside the standard temp build dir to persist across python versions
         cache_base_dir = os.path.abspath(os.path.join('build', 'libpostal_install_cache'))
-        libpostal_install_prefix = os.path.join(cache_base_dir, norm_arch)
+
+        # Adjust install path based on OS
+        if platform.system() == 'Darwin':
+            # On macOS, install directly into the base cache dir because the 
+            # 'universal' matrix entry uses a single cache key, but cibuildwheel
+            # builds both x86_64 and arm64 sequentially in the same job.
+            # Installing into arch-specific subdirs would cause cache misses.
+            print("Detected macOS, installing libpostal directly into cache base directory for universal caching.", flush=True)
+            libpostal_install_prefix = cache_base_dir
+        else:
+            # On Linux/Windows, use architecture-specific subdirectories
+            libpostal_install_prefix = os.path.join(cache_base_dir, norm_arch)
+        
         libpostal_lib_dir = os.path.join(libpostal_install_prefix, 'lib')
         libpostal_include_dir = os.path.join(libpostal_install_prefix, 'include')
         libpostal_static_lib = os.path.join(libpostal_lib_dir, 'libpostal.a')
