@@ -2,12 +2,12 @@ name: Build Wheels
 
 on:
   push:
-    branches: [ "main"] # Adjust branches as needed
+    branches: [ "main", "master"] # Adjust branches as needed
     tags:
       - 'v*'
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   workflow_dispatch: # Allow manual trigger
   schedule:
     - cron: "0 12 1 * *" # Run monthly on the 1st at 12:00 UTC
