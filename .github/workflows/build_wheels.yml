@@ -2,15 +2,15 @@ name: Build Wheels
 
 on:
   push:
-    branches:
-      - "slop/pre_build_library" # Or your main branch
+    branches: [ "main"] # Adjust branches as needed
     tags:
-      - 'v*' # Trigger on version tags
+      - 'v*'
   pull_request:
-    branches:
-      - "slop/pre_build_library" # Or your main branch
+    # The branches below must be a subset of the branches above
+    branches: [ "main" ]
   workflow_dispatch: # Allow manual trigger
-
+  schedule:
+    - cron: "0 12 1 * *" # Run monthly on the 1st at 12:00 UTC
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }} (${{ matrix.arch || 'native' }})
