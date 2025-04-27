@@ -98,7 +98,55 @@ jobs:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
           CIBW_SKIP: "pp* *-musllinux_* cp37-win*"
           CIBW_BUILD_VERBOSITY: "1"
-          CIBW_TEST_COMMAND: "python -c \"import os; print('Testing postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')\""
+          CIBW_TEST_COMMAND: |
+            python -c "
+            import os
+            import sys
+
+            print('Testing postal import...')
+            import postal
+            print(f'postal imported successfully. __file__={postal.__file__}')
+
+            print('\\nTesting postal parser functionality...')
+            from postal.parser import parse_address
+            parsed = parse_address('781 Franklin Ave Crown Heights Brooklyn NYC NY 11216 USA')
+            print(f'Address parsed: {parsed}')
+            
+            # Basic verification of parsing results
+            expected_components = {
+                'house_number': '781',
+                'road': 'franklin ave',
+                'suburb': 'crown heights',
+                'city_district': 'brooklyn',
+                'city': 'nyc',
+                'state': 'ny'
+            }
+            
+            match_count = 0
+            for component, label in parsed:
+                if label in expected_components and expected_components[label].lower() == component.lower():
+                    match_count += 1
+                    
+            if match_count >= 4:  # At least 4 key components should match
+                print('✓ Parser test passed')
+            else:
+                print('✗ Parser test failed')
+                sys.exit(1)
+                
+            print('\\nTesting postal expansion functionality...')
+            from postal.expand import expand_address
+            expansions = expand_address('123 Main St Apt 4')
+            print(f'Expansions: {expansions[:3]}...')
+            
+            # Basic verification of expansion results
+            if len(expansions) > 0 and '123 main street apartment 4' in expansions:
+                print('✓ Expansion test passed')
+            else:
+                print('✗ Expansion test failed')
+                sys.exit(1)
+                
+            print('\\nAll tests passed successfully!')
+            "
           # Improved after-build step that calls our dedicated script
           CIBW_AFTER_BUILD: |
             /host/copy_cache.sh
