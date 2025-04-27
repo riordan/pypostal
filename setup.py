@@ -191,6 +191,15 @@ class build_ext(_build_ext):
                     print("--- Running make install ---", flush=True)
                     subprocess.check_call(['make', 'install'], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
                     print("--- Build and install complete ---", flush=True)
+                    
+                    # --- DEBUG: List contents of install prefix after make install ---
+                    print(f"::debug::Listing contents of install prefix: {libpostal_install_prefix}")
+                    list_cmd = f'ls -lR "{libpostal_install_prefix}"'
+                    print(f"::debug::Running command: {list_cmd}")
+                    os.system(list_cmd)
+                    print("::debug::Finished listing install prefix contents.")
+                    # ------------------------------------------------------------------
+                    
                 except subprocess.CalledProcessError as e:
                     print(f"::error title=Make Failed::Error running make/make install: {e}", file=sys.stderr)
                     print("::endgroup::") # End make group
