@@ -131,10 +131,11 @@ jobs:
           CIBW_ENVIRONMENT_WINDOWS: >
             PATH="C:\Windows\System32;C:\msys64\usr\bin;C:\msys64\mingw64\bin;{env_path}"
 
-          # --- Specify Architectures based on matrix --- #
+          # --- Specify Architectures based on matrix/OS --- #
           # On Linux/Windows, we use the specific arch from the matrix.
-          # On macOS, 'auto' lets cibuildwheel build both x86_64 and arm64.
+          # On macOS, explicitly request both.
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
 
           # Skip PyPy, musllinux, and Python 3.7 on Windows (only relevant if Windows matrix entry exists)
           CIBW_SKIP: "pp* *-musllinux_* cp37-win*"

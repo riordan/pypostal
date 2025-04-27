@@ -21,6 +21,7 @@ vendor_dir = os.path.join(this_dir, 'vendor', 'libpostal')
 # Custom build_ext command
 class build_ext(_build_ext):
     def run(self):
+        print("::group::Determine Target Architecture") # Start group
         # --- Determine Target Architecture from cibuildwheel --- 
         target_arch = os.environ.get('CIBW_ARCHS', platform.machine())
         # Normalize arch string for directory naming (e.g., x86_64 -> x86_64)
@@ -35,7 +36,9 @@ class build_ext(_build_ext):
         else:
              norm_arch = target_arch # Use as-is if unknown
         print(f"Normalized target architecture for cache dir: {norm_arch}", flush=True)
+        print("::endgroup::") # End group
 
+        print("::group::Check libpostal build cache") # Start group
         # Define shared, architecture-specific paths
         # Use a directory outside the standard temp build dir to persist across python versions
         cache_base_dir = os.path.abspath(os.path.join('build', 'libpostal_install_cache'))
@@ -57,180 +60,204 @@ class build_ext(_build_ext):
         libpostal_static_lib = os.path.join(libpostal_lib_dir, 'libpostal.a')
 
         # Check if libpostal is already built for this architecture
-        if os.path.exists(libpostal_static_lib):
-            print(f"Found cached libpostal build for {norm_arch} at {libpostal_install_prefix}", flush=True)
+        needs_build = not os.path.exists(libpostal_static_lib)
+        if needs_build:
+            # Use notice annotation for cache miss
+            print(f"::notice title=Cache Miss::No cached libpostal build found for {norm_arch} at {libpostal_static_lib}, building now...", flush=True)
+            print("::endgroup::") # End group (cache check)
         else:
-            print(f"No cached libpostal build found for {norm_arch}, building now...", flush=True)
-            # Ensure install directories exist
-            os.makedirs(libpostal_install_prefix, exist_ok=True)
-            # os.makedirs(libpostal_lib_dir, exist_ok=True) # Created by make install
-            # os.makedirs(libpostal_include_dir, exist_ok=True) # Created by make install
+            # Use notice annotation for cache hit
+            print(f"::notice title=Cache Hit::Found cached libpostal build for {norm_arch} at {libpostal_install_prefix}", flush=True)
+            print("::endgroup::") # End group (cache check)
 
-            # --- Copy Windows-specific files (if on Windows) --- #
-            if platform.system() == 'Windows':
-                print("Copying files from vendor/libpostal/windows/ to vendor/libpostal/", flush=True)
-                windows_dir = os.path.join(vendor_dir, 'windows')
-                if os.path.isdir(windows_dir):
-                    # Use shutil.copytree for robustness if Python version allows `dirs_exist_ok`
-                    # For simplicity/compatibility, copy file by file
-                    for item_name in os.listdir(windows_dir):
-                        src_item = os.path.join(windows_dir, item_name)
-                        dst_item = os.path.join(vendor_dir, item_name)
-                        try:
-                            if os.path.isfile(src_item):
-                                shutil.copy2(src_item, dst_item)
-                            elif os.path.isdir(src_item):
-                                # Avoid copying subdirs for now unless needed
-                                # shutil.copytree(src_item, dst_item, dirs_exist_ok=True) 
-                                pass 
-                        except Exception as e:
-                            print(f"Warning: Could not copy {src_item} to {dst_item}: {e}", file=sys.stderr)
-                else:
-                    print("Warning: vendor/libpostal/windows/ directory not found.", file=sys.stderr)
-            # --------------------------------------------------- #
 
-            # Check if libpostal source exists and run bootstrap.sh if needed
-            configure_path = os.path.join(vendor_dir, 'configure')
-            if not os.path.exists(configure_path):
-                print("libpostal source not found or configure script missing, running bootstrap.sh", flush=True)
-                try:
-                    # Explicitly use 'sh' for Windows compatibility with MSYS2
-                    cmd = ['./bootstrap.sh']
-                    if platform.system() == 'Windows':
-                        cmd.insert(0, 'sh') 
-                    subprocess.check_call(cmd, cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
-                except subprocess.CalledProcessError as e:
-                    print(f"Error running bootstrap.sh: {e}", file=sys.stderr)
-                    sys.exit(1)
-                except OSError as e:
-                    # Add check for FileNotFoundError which is more specific on Python 3
-                    if isinstance(e, FileNotFoundError):
-                        print(f"Error running bootstrap.sh: Command '{cmd[0]}' not found. Is MSYS2/sh installed and in PATH?", file=sys.stderr)
+        if needs_build:
+            print("::group::Build libpostal from source") # Start build group
+            original_cflags = os.environ.get('CFLAGS', '') # Define here for use in finally block
+
+            try:
+                # Ensure install directories exist
+                os.makedirs(libpostal_install_prefix, exist_ok=True)
+
+                # --- Copy Windows-specific files (if on Windows) --- #
+                if platform.system() == 'Windows':
+                    print("::group::Copying Windows-specific files")
+                    print("Copying files from vendor/libpostal/windows/ to vendor/libpostal/", flush=True)
+                    windows_dir = os.path.join(vendor_dir, 'windows')
+                    if os.path.isdir(windows_dir):
+                        # Use shutil.copytree for robustness if Python version allows `dirs_exist_ok`
+                        # For simplicity/compatibility, copy file by file
+                        for item_name in os.listdir(windows_dir):
+                            src_item = os.path.join(windows_dir, item_name)
+                            dst_item = os.path.join(vendor_dir, item_name)
+                            try:
+                                if os.path.isfile(src_item):
+                                    shutil.copy2(src_item, dst_item)
+                                elif os.path.isdir(src_item):
+                                    # Avoid copying subdirs for now unless needed
+                                    # shutil.copytree(src_item, dst_item, dirs_exist_ok=True) 
+                                    pass 
+                            except Exception as e:
+                                print(f"Warning: Could not copy {src_item} to {dst_item}: {e}", file=sys.stderr)
                     else:
-                        print(f"Error running bootstrap.sh (OS error): {e}", file=sys.stderr)
-                    sys.exit(1)
+                        print("Warning: vendor/libpostal/windows/ directory not found.", file=sys.stderr)
+                    print("::endgroup::") # End Windows copy group
+                # --------------------------------------------------- #
 
-            # Configure libpostal
-            print(f"Configuring libpostal with prefix {libpostal_install_prefix}", flush=True)
-            configure_cmd = [
-                os.path.join(vendor_dir, 'configure'), # Use absolute path
-                '--disable-shared', 
-                '--enable-static', 
-                f'--prefix={libpostal_install_prefix}'
-            ]
-
-            # Add --disable-sse2 flag ONLY for ARM64 targets (macOS or Linux)
-            if 'arm64' in norm_arch:
-                # Check if already added for macOS to avoid duplicates, though harmless
-                if '--disable-sse2' not in configure_cmd:
-                     print(f"Detected ARM64 TARGET ({platform.system()}), adding --disable-sse2 flag", flush=True)
-                     configure_cmd.append('--disable-sse2')
-            elif platform.system() == 'Darwin': # Explicitly log for non-arm macOS
-                 print(f"Detected macOS non-ARM64 TARGET ({norm_arch}), NOT adding --disable-sse2 flag", flush=True)
-            
-            # Add other platform-specific flags if needed later
-
-            # --- Set CFLAGS for PIC --- #
-            original_cflags = os.environ.get('CFLAGS', '')
-            pic_cflags = original_cflags + ' -fPIC'
-            print(f"Temporarily setting CFLAGS to: {pic_cflags}", flush=True)
-            os.environ['CFLAGS'] = pic_cflags
-
-            try:
-                # Run configure from within vendor dir for simplicity
-                subprocess.check_call(configure_cmd, cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error running ./configure: {e}", file=sys.stderr)
-                # Optional: Capture and print config.log if it exists
-                config_log = os.path.join(vendor_dir, 'config.log')
-                if os.path.exists(config_log):
-                    print("--- config.log ---:")
+                # Check if libpostal source exists and run bootstrap.sh if needed
+                configure_path = os.path.join(vendor_dir, 'configure')
+                if not os.path.exists(configure_path):
+                    print("::group::Running bootstrap.sh")
+                    print("libpostal source not found or configure script missing, running bootstrap.sh", flush=True)
                     try:
-                        with open(config_log, 'r') as f:
-                            print(f.read())
-                    except Exception as log_e:
-                        print(f"(Could not read config.log: {log_e})", file=sys.stderr)
-                    print("--- End config.log ---:")
-                # --- Restore CFLAGS --- #
-                print(f"Restoring CFLAGS to: {original_cflags}", flush=True)
-                os.environ['CFLAGS'] = original_cflags
-                sys.exit(1)
-            # except Exception as e: # Catch other potential errors
-            #     # --- Restore CFLAGS --- #
-            #     print(f"Restoring CFLAGS due to other error: {original_cflags}", flush=True)
-            #     os.environ['CFLAGS'] = original_cflags
-            #     raise e
+                        cmd = ['./bootstrap.sh']
+                        if platform.system() == 'Windows':
+                            cmd.insert(0, 'sh') 
+                        subprocess.check_call(cmd, cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
+                    except subprocess.CalledProcessError as e:
+                        print(f"::error title=Bootstrap Failed::Error running bootstrap.sh: {e}", file=sys.stderr)
+                        print("::endgroup::") # End bootstrap group
+                        print("::endgroup::") # End build group
+                        sys.exit(1)
+                    except OSError as e:
+                        if isinstance(e, FileNotFoundError):
+                            print(f"::error title=Bootstrap Failed::Command '{cmd[0]}' not found. Is MSYS2/sh installed and in PATH?", file=sys.stderr)
+                        else:
+                            print(f"::error title=Bootstrap Failed::Error running bootstrap.sh (OS error): {e}", file=sys.stderr)
+                        print("::endgroup::") # End bootstrap group
+                        print("::endgroup::") # End build group
+                        sys.exit(1)
+                    print("--- bootstrap.sh complete ---", flush=True)
+                    print("::endgroup::") # End bootstrap group
 
-            # Build and install libpostal
-            print("Building and installing libpostal...", flush=True)
-            try:
-                # Clean first (optional)
-                subprocess.check_call(['make', 'clean'], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
+                # Configure libpostal
+                print("::group::Running ./configure")
+                print(f"Configuring libpostal with prefix {libpostal_install_prefix}", flush=True)
+                configure_cmd = [
+                    os.path.join(vendor_dir, 'configure'), # Use absolute path
+                    '--disable-shared', 
+                    '--enable-static', 
+                    f'--prefix={libpostal_install_prefix}'
+                ]
+                if 'arm64' in norm_arch:
+                    if '--disable-sse2' not in configure_cmd:
+                         print(f"Detected ARM64 TARGET ({platform.system()}), adding --disable-sse2 flag", flush=True)
+                         configure_cmd.append('--disable-sse2')
+                elif platform.system() == 'Darwin':
+                     print(f"Detected macOS non-ARM64 TARGET ({norm_arch}), NOT adding --disable-sse2 flag", flush=True)
                 
-                # Build with multiple cores
-                num_cores = multiprocessing.cpu_count()
-                subprocess.check_call(['make', '-j', str(num_cores)], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
-                
-                # Install to prefix
-                subprocess.check_call(['make', 'install'], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error running make/make install: {e}", file=sys.stderr)
-                # --- Restore CFLAGS --- #
-                print(f"Restoring CFLAGS after make error: {original_cflags}", flush=True)
-                os.environ['CFLAGS'] = original_cflags
-                sys.exit(1)
-            # except Exception as e:
-            #     # --- Restore CFLAGS --- #
-            #     print(f"Restoring CFLAGS after other make error: {original_cflags}", flush=True)
-            #     os.environ['CFLAGS'] = original_cflags
-            #     raise e
+                # Set CFLAGS for PIC (do this just before configure)
+                pic_cflags = original_cflags + ' -fPIC'
+                print(f"Temporarily setting CFLAGS to: {pic_cflags}", flush=True)
+                os.environ['CFLAGS'] = pic_cflags
+
+                try:
+                    subprocess.check_call(configure_cmd, cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
+                    print("--- Configure complete ---", flush=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"::error title=Configure Failed::Error running ./configure: {e}", file=sys.stderr)
+                    config_log = os.path.join(vendor_dir, 'config.log')
+                    if os.path.exists(config_log):
+                        print("::group::config.log output") # Group for config.log
+                        try:
+                            with open(config_log, 'r') as f:
+                                print(f.read())
+                        except Exception as log_e:
+                            print(f"(Could not read config.log: {log_e})", file=sys.stderr)
+                        print("::endgroup::") # End config.log group
+                    print("::endgroup::") # End configure group
+                    print("::endgroup::") # End build group
+                    sys.exit(1) # Exit handled within finally
+                finally:
+                    # Restore CFLAGS immediately after configure attempt
+                    print(f"Restoring CFLAGS after configure attempt to: {original_cflags}", flush=True)
+                    os.environ['CFLAGS'] = original_cflags
+                print("::endgroup::") # End configure group
+
+
+                # Build and install libpostal
+                print("::group::Running make and make install")
+                print("Building and installing libpostal...", flush=True)
+                try:
+                    print("--- Running make clean ---", flush=True)
+                    subprocess.check_call(['make', 'clean'], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
+                    
+                    print("--- Running make -jN ---", flush=True)
+                    num_cores = multiprocessing.cpu_count()
+                    subprocess.check_call(['make', '-j', str(num_cores)], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
+                    
+                    print("--- Running make install ---", flush=True)
+                    subprocess.check_call(['make', 'install'], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
+                    print("--- Build and install complete ---", flush=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"::error title=Make Failed::Error running make/make install: {e}", file=sys.stderr)
+                    print("::endgroup::") # End make group
+                    print("::endgroup::") # End build group
+                    sys.exit(1)
+                print("::endgroup::") # End make group
+
+
+                # Check if static library was created
+                if not os.path.exists(libpostal_static_lib):
+                     print(f"::error title=Build Failed::Static library {libpostal_static_lib} not found after build!", file=sys.stderr)
+                     print("::endgroup::") # End build group
+                     sys.exit(1)
+                else:
+                     print(f"::notice title=Build Success::Successfully built and installed libpostal for {norm_arch} to {libpostal_install_prefix}", flush=True)
+
+            except SystemExit as e:
+                 print("::endgroup::") # Ensure build group is closed on sys.exit
+                 raise e # Re-raise to exit
+            except Exception as e:
+                 # Catch any other unexpected errors during build
+                 print(f"::error title=Build Failed::Unexpected error during build: {e}", file=sys.stderr)
+                 print("::endgroup::") # Ensure build group is closed
+                 sys.exit(1)
             finally:
-                 # --- Restore CFLAGS --- #
-                 # Ensure CFLAGS is restored even if make succeeds
-                 print(f"Restoring CFLAGS after libpostal build: {original_cflags}", flush=True)
-                 os.environ['CFLAGS'] = original_cflags
+                 # Ensure CFLAGS is restored if something went wrong after setting it
+                 # (Configure's finally block already handles the configure stage)
+                 # Check if pic_cflags was set before trying to restore original_cflags
+                 # Note: This finally might be redundant due to try/finally around configure
+                 # and explicit restore on make error, but added for safety.
+                 if os.environ.get('CFLAGS') != original_cflags:
+                      print(f"Restoring CFLAGS in outer finally block to: {original_cflags}", flush=True)
+                      os.environ['CFLAGS'] = original_cflags
 
-            # Check if static library was created
-            if not os.path.exists(libpostal_static_lib):
-                print(f"Error: Static library {libpostal_static_lib} not found after build!", file=sys.stderr)
-                sys.exit(1)
-            else:
-                 print(f"Successfully built and installed libpostal for {norm_arch} to {libpostal_install_prefix}", flush=True)
+            print("::endgroup::") # End build group (successful path)
 
         # ----- End of Conditional Build ----- #
 
+        print("::group::Update Python extension paths") # Start group
         # Update Extension paths *before* calling the original build_ext
         # Always point to the shared architecture-specific cache location
         print(f"Updating extension paths to use cache: include={libpostal_include_dir}, lib={libpostal_lib_dir}", flush=True)
         for ext in self.extensions:
             # Add install path to include and library dirs
-            ext.include_dirs.insert(0, libpostal_include_dir)
-            ext.library_dirs.insert(0, libpostal_lib_dir)
+            # Ensure they are added at the beginning to take precedence
+            if libpostal_include_dir not in ext.include_dirs:
+                 ext.include_dirs.insert(0, libpostal_include_dir)
+            if libpostal_lib_dir not in ext.library_dirs:
+                 ext.library_dirs.insert(0, libpostal_lib_dir)
             
             # Remove old absolute/relative paths if they exist (optional, but cleaner)
             ext.include_dirs = [d for d in ext.include_dirs if d not in ('/usr/local/include',)]
             ext.library_dirs = [d for d in ext.library_dirs if d not in ('/usr/local/lib',)]
 
-            # Ensure the src dir isn't duplicated if it was added before
-            # libpostal_src_dir = os.path.join(vendor_dir, 'src')
-            # if libpostal_src_dir not in ext.include_dirs:
-            #      ext.include_dirs.append(libpostal_src_dir)
-            # Keep src dir include? Headers from install prefix should be sufficient.
+            # Remove vendored src include dir as headers should come from install prefix
             ext.include_dirs = [d for d in ext.include_dirs if 'vendor/libpostal/src' not in d]
-
 
             print(f"Final paths for {ext.name}: include={ext.include_dirs}, lib={ext.library_dirs}", flush=True)
 
         # --- Set environment variables to help find the library --- #
         # On macOS, LIBRARY_PATH can help the linker find libraries
+        # Set it even if using cache, as linker needs it when building extension
         print(f"Setting LIBRARY_PATH to: {libpostal_lib_dir}", flush=True)
         os.environ['LIBRARY_PATH'] = libpostal_lib_dir
-        # On Linux/others, LD_LIBRARY_PATH is used at runtime, but LIBRARY_PATH might sometimes be used at link time too.
-        # os.environ['LD_LIBRARY_PATH'] = libpostal_lib_dir # Might be needed later if runtime loading fails
+        print("::endgroup::") # End group
 
-        # Now, run the original build_ext command
-        print("Running original build_ext command...", flush=True)
+        print("::notice title=Build Step::Running original setuptools build_ext command...", flush=True)
         _build_ext.run(self)
+        print("::notice title=Build Step::Finished original setuptools build_ext command.", flush=True)
 
 
 def main():
