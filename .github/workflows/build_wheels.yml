@@ -1,16 +1,16 @@
-name: Build Wheels
+# DISABLED: This workflow is now superseded by build_wheels_linux.yml and build_wheels_macos.yml.
+# To re-enable, restore the 'on:' section below.
+# on:
+#   push:
+#     branches: [ "main", "master"]
+#     tags:
+#       - 'v*'
+#   pull_request:
+#     branches: [ "main", "master" ]
+#   workflow_dispatch:
+#   schedule:
+#     - cron: "0 12 1 * *"
 
-on:
-  push:
-    branches: [ "main", "master"] # Adjust branches as needed
-    tags:
-      - 'v*'
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "main", "master" ]
-  workflow_dispatch: # Allow manual trigger
-  schedule:
-    - cron: "0 12 1 * *" # Run monthly on the 1st at 12:00 UTC
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }} (${{ matrix.arch || 'native' }})

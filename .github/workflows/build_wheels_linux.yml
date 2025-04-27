@@ -1,0 +1,71 @@
+name: Build Wheels (Linux)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 12 1 * *"
+
+jobs:
+  build_wheels_linux:
+    name: Build wheels on Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            cibw_archs: "x86_64"
+          - os: ubuntu-22.04-arm
+            arch: aarch64
+            cibw_archs: "aarch64"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Get libpostal submodule commit hash
+        id: get_submodule_hash
+        shell: bash
+        run: |
+          HASH=$(git submodule status vendor/libpostal | awk '{ sub(/^[+-]?/, ""); print $1 }')
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Cache compiled libpostal library
+        uses: actions/cache@v4
+        with:
+          path: build/libpostal_install_cache
+          key: linux-${{ matrix.arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
+          restore-keys: |
+            linux-${{ matrix.arch }}-libpostal-cache-
+
+      - name: Ensure cache directory exists
+        shell: bash
+        run: mkdir -p build/libpostal_install_cache
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.17.0
+        env:
+          CIBW_BUILD: "cp311-* cp312-*"
+          CIBW_BEFORE_BUILD_LINUX: "dnf install -y autoconf automake libtool pkgconfig curl perl-IPC-Cmd"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_SKIP: "pp* *-musllinux_* cp37-win*"
+          CIBW_BUILD_VERBOSITY: "1"
+          CIBW_TEST_COMMAND: "python -c \"import os; print('Testing postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')\""
+        with:
+          output-dir: wheelhouse
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.arch }}
+          path: ./wheelhouse/*.whl

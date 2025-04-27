@@ -20,7 +20,10 @@ vendor_dir = os.path.join(this_dir, 'vendor', 'libpostal')
 # For now, let setuptools handle version via pyproject.toml
 
 def get_os_name():
-    return platform.system().lower()
+    name = platform.system().lower()
+    if name == 'darwin':
+        return 'macos'
+    return name
 
 def normalize_arch(arch):
     arch = arch.lower()
@@ -91,6 +94,17 @@ def get_build_env():
 
 # Custom build_ext command
 class build_ext(_build_ext):
+    def clean_libpostal_build_dir(self):
+        print("[pypostal] Cleaning libpostal build directory with 'make clean' and 'git clean -xfd'...", flush=True)
+        try:
+            subprocess.check_call(['make', 'clean'], cwd=vendor_dir)
+        except Exception as e:
+            print(f"[pypostal] Warning: 'make clean' failed: {e}", flush=True)
+        try:
+            subprocess.check_call(['git', 'clean', '-xfd'], cwd=vendor_dir)
+        except Exception as e:
+            print(f"[pypostal] Warning: 'git clean -xfd' failed: {e}", flush=True)
+
     def run(self):
         cache_base_dir = get_cache_dir()
         norm_arch = normalize_arch(os.environ.get('CIBW_ARCHS', platform.machine()))
@@ -109,6 +123,8 @@ class build_ext(_build_ext):
             print(f"Found cached libpostal build for {norm_arch} at {libpostal_install_prefix}", flush=True)
         else:
             print(f"No cached libpostal build found for {norm_arch}, building now...", flush=True)
+            # Clean build dir before every build
+            self.clean_libpostal_build_dir()
             # Ensure install directories exist
             os.makedirs(libpostal_install_prefix, exist_ok=True)
             # os.makedirs(libpostal_lib_dir, exist_ok=True) # Created by make install
@@ -212,9 +228,8 @@ class build_ext(_build_ext):
             # Build and install libpostal
             print("Building and installing libpostal...", flush=True)
             try:
-                # Clean first (optional)
-                subprocess.check_call(['make', 'clean'], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
-                
+                # Clean again before make just in case
+                self.clean_libpostal_build_dir()
                 # Build with multiple cores
                 num_cores = multiprocessing.cpu_count()
                 subprocess.check_call(['make', '-j', str(num_cores)], cwd=vendor_dir, stdout=sys.stdout, stderr=sys.stderr)
@@ -256,6 +271,7 @@ class build_ext(_build_ext):
             # Build for x86_64 if not present
             if not os.path.exists(x86_lib):
                 print('::group::Building libpostal for x86_64')
+                self.clean_libpostal_build_dir()
                 env = get_build_env().copy()
                 env['CFLAGS'] = '-arch x86_64 -fPIC'
                 env['LDFLAGS'] = '-arch x86_64'
@@ -263,13 +279,14 @@ class build_ext(_build_ext):
                 subprocess.check_call([
                     './configure', '--disable-shared', '--enable-static', f'--prefix={x86_prefix}'
                 ], cwd=vendor_dir, env=env)
-                subprocess.check_call(['make', 'clean'], cwd=vendor_dir, env=env)
+                self.clean_libpostal_build_dir()
                 subprocess.check_call(['make', '-j4'], cwd=vendor_dir, env=env)
                 subprocess.check_call(['make', 'install'], cwd=vendor_dir, env=env)
                 print('::endgroup::')
             # Build for arm64 if not present
             if not os.path.exists(arm_lib):
                 print('::group::Building libpostal for arm64')
+                self.clean_libpostal_build_dir()
                 env = get_build_env().copy()
                 env['CFLAGS'] = '-arch arm64 -fPIC'
                 env['LDFLAGS'] = '-arch arm64'
@@ -277,7 +294,7 @@ class build_ext(_build_ext):
                 subprocess.check_call([
                     './configure', '--disable-shared', '--enable-static', '--disable-sse2', f'--prefix={arm_prefix}'
                 ], cwd=vendor_dir, env=env)
-                subprocess.check_call(['make', 'clean'], cwd=vendor_dir, env=env)
+                self.clean_libpostal_build_dir()
                 subprocess.check_call(['make', '-j4'], cwd=vendor_dir, env=env)
                 subprocess.check_call(['make', 'install'], cwd=vendor_dir, env=env)
                 print('::endgroup::')
