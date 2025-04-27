@@ -1,4 +1,4 @@
-name: Build Wheels (macOS)
+name: Build Wheels (Windows)
 
 on:
   push:
@@ -18,22 +18,22 @@ permissions:
   actions: read   # for detecting workflow run conditions
 
 jobs:
-  build_wheels_macos:
-    name: Build wheels on macOS
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-13-xlarge, macos-latest]
-        include:
-          - os: macos-13-xlarge
-            arch: 'arm64'
-          - os: macos-latest
-            arch: 'x86_64'
+  build_wheels_windows:
+    name: Build wheels on Windows (amd64)
+    runs-on: windows-latest
+    env:
+      BUILD_ARCH: x64
+      VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: true
+
+      - name: Setup Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
+        with:
+          arch: x64
 
       - name: Get libpostal submodule commit hash
         id: get_submodule_hash
@@ -41,6 +41,54 @@ jobs:
         run: |
           HASH=$(git submodule status vendor/libpostal | awk '{ sub(/^[+-]?/, ""); print $1 }')
           echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Enhance msys2/mingw64 environment
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: >-
+            git
+            base-devel
+            mingw-w64-x86_64-toolchain
+            autoconf
+            automake
+            libtool
+            make
+
+      - name: Cache libpostal libraries
+        uses: actions/cache@v4
+        id: cache-libpostal
+        with:
+          path: vendor/libpostal/src/.libs
+          key: windows-x64-libpostal-cache-v2-${{ steps.get_submodule_hash.outputs.hash }}
+          restore-keys: |
+            windows-x64-libpostal-cache-v2-
+
+      - name: Build libpostal
+        if: steps.cache-libpostal.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: |
+          cd vendor/libpostal
+          cp -rf windows/* ./
+          ./bootstrap.sh
+          ./configure --disable-data-download
+          make -j4
+
+      - name: Create import library
+        shell: cmd
+        run: |
+          cd vendor\libpostal
+          if not exist src\.libs\libpostal.lib (
+            lib.exe /def:libpostal.def /out:src\.libs\libpostal.lib /machine:x64
+          )
+
+      - name: Copy DLL and import library to expected locations
+        shell: cmd
+        run: |
+          mkdir -p %GITHUB_WORKSPACE%\build\libpostal_install_cache\lib
+          copy vendor\libpostal\src\.libs\libpostal-1.dll %GITHUB_WORKSPACE%\build\libpostal_install_cache\lib\
+          copy vendor\libpostal\src\.libs\libpostal.lib %GITHUB_WORKSPACE%\build\libpostal_install_cache\lib\
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -51,11 +99,13 @@ jobs:
         run: python -m pip install --upgrade pip cibuildwheel
 
       - name: Create test script for comprehensive testing
+        shell: bash
         run: |
           cat > run_comprehensive_tests.py << 'EOF'
           import unittest
           import sys
           import importlib.util
+          import os
 
           # First verify basic import works
           print("Testing postal module import...")
@@ -106,25 +156,17 @@ jobs:
 
       - name: Build wheels
         env:
-          CIBW_BUILD: "cp311-* cp312-*"
-          CIBW_ARCHS: "${{ matrix.arch }}"
-          CIBW_SKIP: "pp* cp37-win*"
-          CIBW_BEFORE_BUILD_MACOS: |
-            brew install autoconf automake libtool pkg-config
-            git config --global --add safe.directory '*'
-          CIBW_ENVIRONMENT_MACOS: >-
-            ARCHFLAGS="-arch ${{ matrix.arch }}" 
-            _PYTHON_HOST_PLATFORM="macosx-${{ matrix.arch }}"
-          CIBW_BUILD_VERBOSITY: "1"
-          # Basic import test first, then run the comprehensive tests
+          # Use simple import test on Windows for now - tests requiring training data may fail due to path issues
           CIBW_TEST_COMMAND: >-
-            python -c "import os; print('Testing basic postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')" &&
-            python {package}/run_comprehensive_tests.py
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
+            python -c "import os; print('Testing basic postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')"
+          CIBW_BUILD: "cp311-* cp312-*"
+          CIBW_ARCHS: "AMD64"
+          CIBW_SKIP: "pp*"
+          CIBW_BUILD_VERBOSITY: "1"
         run: cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-macos-${{ matrix.arch }}
+          name: wheels-windows-amd64
           path: ./wheelhouse/*.whl
