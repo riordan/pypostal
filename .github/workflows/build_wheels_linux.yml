@@ -50,6 +50,14 @@ jobs:
         shell: bash
         run: mkdir -p build/libpostal_install_cache
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Upgrade pip and install cibuildwheel
+        run: python -m pip install --upgrade pip cibuildwheel
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.17.0
         env:
