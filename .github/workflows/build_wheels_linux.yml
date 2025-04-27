@@ -38,10 +38,14 @@ jobs:
           HASH=$(git submodule status vendor/libpostal | awk '{ sub(/^[+-]?/, ""); print $1 }')
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
-      - name: Ensure cache directory exists
-        shell: bash
-        run: |
-          mkdir -p build/libpostal_install_cache
+      - name: Cache compiled libpostal library
+        uses: actions/cache@v4
+        id: cache-libpostal
+        with:
+          path: build/libpostal_install_cache
+          key: linux-${{ matrix.arch }}-libpostal-cache-v2-${{ steps.get_submodule_hash.outputs.hash }}
+          restore-keys: |
+            linux-${{ matrix.arch }}-libpostal-cache-v2-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,6 +54,39 @@ jobs:
 
       - name: Upgrade pip and install cibuildwheel
         run: python -m pip install --upgrade pip cibuildwheel
+
+      # Create an explicit bash script to execute inside the container
+      - name: Create copy script
+        run: |
+          cat > copy_cache.sh << 'EOF'
+          #!/bin/bash
+          set -ex
+          
+          # Print build directory content for debugging
+          echo "Container build directory content:"
+          ls -la build/ || echo "No build directory"
+          
+          CACHE_DIR="build/libpostal_install_cache"
+          if [ -d "$CACHE_DIR" ]; then
+            echo "Found cache directory at $CACHE_DIR"
+            mkdir -p "/host$CACHE_DIR"
+            ls -la "$CACHE_DIR" || echo "Empty cache directory"
+            find "$CACHE_DIR" -type d -exec ls -la {} \; || echo "No directories found"
+            
+            # Copy all files, creating directories as needed
+            cp -r "$CACHE_DIR"/* "/host$CACHE_DIR/" || echo "Copy failed"
+            
+            echo "After copy to host:"
+            ls -la "/host$CACHE_DIR/" || echo "Empty host cache directory"
+          else
+            echo "Cache directory $CACHE_DIR not found"
+          fi
+          EOF
+          chmod +x copy_cache.sh
+
+      - name: Ensure cache directory exists
+        shell: bash
+        run: mkdir -p build/libpostal_install_cache
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.17.0
@@ -62,11 +99,9 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux_* cp37-win*"
           CIBW_BUILD_VERBOSITY: "1"
           CIBW_TEST_COMMAND: "python -c \"import os; print('Testing postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')\""
-          # Add special environment variable to track the host and container paths
-          CIBW_ENVIRONMENT: "LIBPOSTAL_HOST_CACHE_DIR=$(pwd)/build/libpostal_install_cache"
-          # This command runs after each wheel is built to copy the compiled libraries back to the host
+          # Improved after-build step that calls our dedicated script
           CIBW_AFTER_BUILD: |
-            python -c "import os; import shutil; import glob; src=os.path.join('build', 'libpostal_install_cache'); dest=os.environ.get('LIBPOSTAL_HOST_CACHE_DIR', src); print(f'Copying {src} to {dest}'); [shutil.copytree(d, os.path.join(dest, os.path.basename(d)), dirs_exist_ok=True) for d in glob.glob(os.path.join(src, '*'))]"
+            /host/copy_cache.sh
         with:
           output-dir: wheelhouse
 
@@ -76,17 +111,7 @@ jobs:
           find build/libpostal_install_cache -type d | sort
           echo "=== Cache file sizes after build ==="
           find build/libpostal_install_cache -type f -name "*.a" -exec ls -lh {} \; || echo "No .a files found"
-          du -sh build/libpostal_install_cache/*
-
-      - name: Cache compiled libpostal library
-        uses: actions/cache@v4
-        with:
-          # Just specify the base directory - setup.py will create architecture-specific subdirectories
-          path: build/libpostal_install_cache
-          # Use a versioned cache key to allow for cache invalidation when build logic changes
-          key: linux-${{ matrix.arch }}-libpostal-cache-v2-${{ steps.get_submodule_hash.outputs.hash }}
-          restore-keys: |
-            linux-${{ matrix.arch }}-libpostal-cache-v2-
+          du -sh build/libpostal_install_cache/* || echo "No subdirectories found"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
