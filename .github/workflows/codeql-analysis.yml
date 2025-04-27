@@ -3,10 +3,10 @@ name: "CodeQL Analysis"
 
 on:
   push:
-    branches: [ "main", "slop/pre_build_library" ] # Adjust branches as needed
+    branches: [ "main", "master", "slop/pre_build_library" ] # Added "master" branch explicitly
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ "main", "slop/pre_build_library" ]
+    branches: [ "main", "master", "slop/pre_build_library" ]
   schedule:
     - cron: '30 1 * * 0' # Run weekly on Sunday at 01:30 UTC
 
@@ -38,12 +38,14 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: true # Important: Fetch the vendor/libpostal submodule
+        fetch-depth: 0 # Fetch all history for all branches and tags
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
+        queries: security-and-quality # Use a standard query suite
         # If you wish to specify custom queries, you can do so here or in a config file.
         # By default, queries listed here will override any specified in a config file.
         # queries: security-extended,security-and-quality
@@ -60,6 +62,14 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.12' # Use a recent version
+
+    # Install Python dependencies
+    - name: Install Python Dependencies
+      if: matrix.language == 'python'
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install setuptools wheel
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     # MANUAL BUILD STEPS for C/C++ instead of Autobuild
     - name: Manual C/C++ Build Steps
@@ -96,3 +106,4 @@ jobs:
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
+        upload: true # Ensure results are uploaded
