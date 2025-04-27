@@ -243,8 +243,8 @@ class build_ext(_build_ext):
                 # Force load the static library. This might be needed on macOS 
                 # to ensure the static lib code is included in the final extension.
                 print(f"Adding force_load linker arg for: {static_lib_path}", flush=True)
-                # Use separate args for -Wl, and the option itself
-                macos_link_args.extend(['Wl,-force_load', static_lib_path]) 
+                # Combine -Wl,-force_load,<path> into a SINGLE argument string
+                macos_link_args.append(f'-Wl,-force_load,{static_lib_path}') 
             else:
                 print(f"::warning::Static library not found at {static_lib_path} when setting link args!", flush=True)
         # --------------------------------------------------------
@@ -266,7 +266,9 @@ class build_ext(_build_ext):
 
             # Add macOS specific linker args if any
             if macos_link_args:
-                ext.extra_link_args.extend(macos_link_args)
+                 # Clear previous attempts if any
+                 ext.extra_link_args = [arg for arg in ext.extra_link_args if '-force_load' not in arg]
+                 ext.extra_link_args.extend(macos_link_args)
 
             print(f"Final paths for {ext.name}: include={ext.include_dirs}, lib={ext.library_dirs}, link_args={ext.extra_link_args}", flush=True)
 
@@ -283,91 +285,55 @@ class build_ext(_build_ext):
 
 
 def main():
-    # --- Determine install paths needed for library definition ---
-    # This logic is duplicated from build_ext, which isn't ideal, but needed
-    # because the Extension objects are defined *before* build_ext.run() happens.
-    target_arch = os.environ.get('CIBW_ARCHS', platform.machine())
-    if 'arm64' in target_arch or 'aarch64' in target_arch:
-        norm_arch = 'arm64'
-    elif 'x86_64' in target_arch or 'AMD64' in target_arch:
-         norm_arch = 'x86_64'
-    else: norm_arch = 'x86' # Fallback, adjust if needed
-    cache_base_dir = os.path.abspath(os.path.join('build', 'libpostal_install_cache'))
-    if platform.system() == 'Darwin':
-        libpostal_install_prefix = cache_base_dir
-    else:
-        libpostal_install_prefix = os.path.join(cache_base_dir, norm_arch)
-    libpostal_lib_dir = os.path.join(libpostal_install_prefix, 'lib')
-    libpostal_static_lib_path = os.path.join(libpostal_lib_dir, 'libpostal.a')
-    # -------------------------------------------------------------
-
-    # Define libraries list based on OS
-    link_libraries = []
-    if platform.system() == 'Darwin':
-        # On macOS, try linking directly against the static library path
-        print(f"macOS detected: Will attempt to link directly against {libpostal_static_lib_path}", flush=True)
-        # Note: We still need the -L path set by build_ext for the linker to find dependencies if any.
-        # Pass the full path to the static library directly instead of using -lpostal.
-        link_libraries.append(libpostal_static_lib_path)
-    else:
-        # On other systems (Linux), use the standard library name
-        link_libraries.append('postal')
-
+    # Most metadata moved to pyproject.toml
+    # Define extensions here, paths will be updated by custom build_ext
     extensions = [
             Extension('postal._expand',
                       sources=['postal/pyexpand.c', 'postal/pyutils.c'],
-                      libraries=link_libraries, # Use dynamically determined list
-                      # library_dirs=[libpostal_lib_dir], # Let build_ext handle library_dirs
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
-                      # extra_link_args=macos_link_args if platform.system() == 'Darwin' else [] # Let build_ext handle link args for now
                       ),
             Extension('postal._parser',
                       sources=['postal/pyparser.c', 'postal/pyutils.c'],
-                      libraries=link_libraries,
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
                       ),
             Extension('postal._token_types',
                       sources=['postal/pytokentypes.c'],
-                      libraries=link_libraries,
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
                       ),
             Extension('postal._tokenize',
                       sources=['postal/pytokenize.c', 'postal/pyutils.c'],
-                      libraries=link_libraries,
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
                       ),
             Extension('postal._normalize',
                       sources=['postal/pynormalize.c', 'postal/pyutils.c'],
-                      libraries=link_libraries,
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
                       ),
             Extension('postal._near_dupe',
                       sources=['postal/pyneardupe.c', 'postal/pyutils.c'],
-                      libraries=link_libraries,
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
                       ),
             Extension('postal._dedupe',
                       sources=['postal/pydedupe.c', 'postal/pyutils.c'],
-                      libraries=link_libraries,
+                      libraries=['postal'], # <<< Reverted
                       extra_compile_args=['-std=c99'],
                       ),
         ]
 
-    # Remove the extra_link_args logic from build_ext.run as we try a different approach
-    # (Need to read build_ext.run again to apply this cleanly)
-    
-    # Read build_ext.run to remove the link_args logic
-    # This is complex to do reliably with edit_file, might need separate steps
-    # For now, just focus on adding the logic in main()
-
     setup(
+        # Minimal setup() call relies on pyproject.toml for most metadata
         ext_modules=extensions,
         packages=find_packages(),
         package_data={
-            'postal': ['*.h'] 
+            'postal': ['*.h'] # Keep C headers needed by extensions
         },
-        zip_safe=False, 
-        cmdclass={'build_ext': build_ext}, 
+        zip_safe=False, # C extensions generally mean zip_safe=False
+        cmdclass={'build_ext': build_ext}, # Use the custom build_ext
     )
 
 

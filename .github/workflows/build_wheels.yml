@@ -76,11 +76,13 @@ jobs:
           # Cache the directory containing arch-specific builds
           # Path is relative to the repository root where setup.py runs
           path: build/libpostal_install_cache
-          # Key includes OS, NORMALISED architecture, and the submodule hash
-          key: ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
-          # Restore key prefix in case of exact miss
+          # Use the normalized architecture from the previous step in the key
+          # Added -v2 suffix to force a cache rebuild one time
+          key: ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}-v2
           restore-keys: |
-            ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-
+            ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}-v2
+            # Optionally restore previous key as fallback (might restore empty cache)
+            # ${{ matrix.os }}-${{ steps.cache_arch.outputs.cache_arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
       # -------------------------------------------------- #
       
       # Ensure the base directory for the cache exists before cibuildwheel runs
