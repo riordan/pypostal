@@ -14,7 +14,8 @@ on:
 jobs:
   build_wheels_macos:
     name: Build wheels on macOS (arm64, x86_64, universal2)
-    runs-on: macos-latest
+    # Use macOS-14 (ARM64) runner which can test both ARM64 and x86_64 via Rosetta 2
+    runs-on: macos-14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,14 +37,21 @@ jobs:
       - name: Upgrade pip and install cibuildwheel
         run: python -m pip install --upgrade pip cibuildwheel
 
-      # --- arm64 ---
-      - name: Restore arm64 cache
+      # Ensure the base cache directory exists
+      - name: Create cache directory structure
+        run: mkdir -p build/libpostal_install_cache
+
+      # --- Restore a single shared cache for all architectures ---
+      - name: Cache libpostal libraries
         uses: actions/cache@v4
+        id: cache-macos
         with:
           path: build/libpostal_install_cache
-          key: macos-arm64-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
+          key: macos-all-libpostal-cache-v2-${{ steps.get_submodule_hash.outputs.hash }}
           restore-keys: |
-            macos-arm64-libpostal-cache-
+            macos-all-libpostal-cache-v2-
+
+      # --- arm64 ---
       - name: Build arm64 wheels
         run: |
           export CIBW_ARCHS=arm64
@@ -55,20 +63,8 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux_* cp37-win*"
           CIBW_BUILD_VERBOSITY: "1"
           CIBW_TEST_COMMAND: "python -c \"import os; print('Testing postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')\""
-      - name: Save arm64 cache
-        uses: actions/cache@v4
-        with:
-          path: build/libpostal_install_cache
-          key: macos-arm64-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
 
       # --- x86_64 ---
-      - name: Restore x86_64 cache
-        uses: actions/cache@v4
-        with:
-          path: build/libpostal_install_cache
-          key: macos-x86_64-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
-          restore-keys: |
-            macos-x86_64-libpostal-cache-
       - name: Build x86_64 wheels
         run: |
           export CIBW_ARCHS=x86_64
@@ -80,20 +76,8 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux_* cp37-win*"
           CIBW_BUILD_VERBOSITY: "1"
           CIBW_TEST_COMMAND: "python -c \"import os; print('Testing postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')\""
-      - name: Save x86_64 cache
-        uses: actions/cache@v4
-        with:
-          path: build/libpostal_install_cache
-          key: macos-x86_64-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
 
       # --- universal2 ---
-      - name: Restore universal2 cache
-        uses: actions/cache@v4
-        with:
-          path: build/libpostal_install_cache
-          key: macos-universal2-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
-          restore-keys: |
-            macos-universal2-libpostal-cache-
       - name: Build universal2 wheels
         run: |
           export CIBW_ARCHS=universal2
@@ -105,11 +89,14 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux_* cp37-win*"
           CIBW_BUILD_VERBOSITY: "1"
           CIBW_TEST_COMMAND: "python -c \"import os; print('Testing postal import...'); import postal; print(f'postal imported successfully. __file__={postal.__file__}')\""
-      - name: Save universal2 cache
+
+      # --- Save the single shared cache ---
+      - name: Save cache
         uses: actions/cache@v4
+        if: always()
         with:
           path: build/libpostal_install_cache
-          key: macos-universal2-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
+          key: macos-all-libpostal-cache-v2-${{ steps.get_submodule_hash.outputs.hash }}
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4

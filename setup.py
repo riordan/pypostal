@@ -73,7 +73,12 @@ def get_cache_dir():
     os_name = get_os_name()
     arch = normalize_arch(os.environ.get('CIBW_ARCHS', platform.machine()))
     commit = get_libpostal_commit()
-    return os.path.abspath(os.path.join('build', f'libpostal_install_cache/{os_name}-{arch}-libpostal-{commit}'))
+    
+    # Use a unique subdirectory for each architecture
+    # This ensures each arch build goes to a separate directory
+    # and prevents sequential builds from overwriting each other
+    base_dir = os.path.abspath(os.path.join('build', 'libpostal_install_cache'))
+    return os.path.join(base_dir, f'{os_name}-{arch}-libpostal-{commit}')
 
 def get_build_env():
     """Return a dict of environment variables for building libpostal, standardized across OSes."""

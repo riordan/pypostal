@@ -41,14 +41,17 @@ jobs:
       - name: Cache compiled libpostal library
         uses: actions/cache@v4
         with:
+          # Just specify the base directory - setup.py will create architecture-specific subdirectories
           path: build/libpostal_install_cache
-          key: linux-${{ matrix.arch }}-libpostal-cache-${{ steps.get_submodule_hash.outputs.hash }}
+          # Use a versioned cache key to allow for cache invalidation when build logic changes
+          key: linux-${{ matrix.arch }}-libpostal-cache-v2-${{ steps.get_submodule_hash.outputs.hash }}
           restore-keys: |
-            linux-${{ matrix.arch }}-libpostal-cache-
+            linux-${{ matrix.arch }}-libpostal-cache-v2-
 
       - name: Ensure cache directory exists
         shell: bash
-        run: mkdir -p build/libpostal_install_cache
+        run: |
+          mkdir -p build/libpostal_install_cache
 
       - name: Set up Python
         uses: actions/setup-python@v5
