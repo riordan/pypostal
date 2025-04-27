@@ -5,6 +5,7 @@ import sys
 import platform
 import shutil
 import multiprocessing
+import re
 
 from setuptools import setup, Extension, Command, find_packages
 from setuptools.command.build_py import build_py
@@ -18,31 +19,90 @@ vendor_dir = os.path.join(this_dir, 'vendor', 'libpostal')
 # VERSION = '1.1.10' # Read from pyproject.toml ideally, but setup.py runs first
 # For now, let setuptools handle version via pyproject.toml
 
+def get_os_name():
+    return platform.system().lower()
+
+def normalize_arch(arch):
+    arch = arch.lower()
+    if 'arm64' in arch or 'aarch64' in arch:
+        return 'arm64'
+    elif 'x86_64' in arch or 'amd64' in arch:
+        return 'x86_64'
+    elif 'x86' in arch or 'i686' in arch or 'win32' in arch:
+        return 'x86'
+    return arch
+
+def get_libpostal_version():
+    version_file = os.path.join(vendor_dir, 'configure.ac')
+    if not os.path.exists(version_file):
+        return 'unknown'
+    with open(version_file) as f:
+        content = f.read()
+    m = re.search(r'AC_INIT\(\[libpostal], ([0-9]+\.[0-9]+\.[0-9]+)\)', content)
+    if m:
+        return m.group(1)
+    return 'unknown'
+
+def get_libpostal_commit():
+    git_dir = os.path.join(vendor_dir, '.git')
+    # Try to get the commit hash using git if available
+    try:
+        result = subprocess.run([
+            'git', '--git-dir', git_dir, 'rev-parse', 'HEAD'
+        ], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except Exception:
+        # Fallback: try to read .git/HEAD directly
+        head_file = os.path.join(git_dir, 'HEAD')
+        if os.path.exists(head_file):
+            with open(head_file) as f:
+                ref = f.read().strip()
+            if ref.startswith('ref:'):
+                ref_path = os.path.join(git_dir, ref.split(' ', 1)[1])
+                if os.path.exists(ref_path):
+                    with open(ref_path) as rf:
+                        return rf.read().strip()
+            else:
+                return ref
+        return 'unknown'
+
+def get_cache_dir():
+    os_name = get_os_name()
+    arch = normalize_arch(os.environ.get('CIBW_ARCHS', platform.machine()))
+    commit = get_libpostal_commit()
+    return os.path.abspath(os.path.join('build', f'libpostal_install_cache/{os_name}-{arch}-libpostal-{commit}'))
+
+def get_build_env():
+    """Return a dict of environment variables for building libpostal, standardized across OSes."""
+    env = os.environ.copy()
+    # Always set -fPIC for static linking
+    env['CFLAGS'] = env.get('CFLAGS', '') + ' -fPIC'
+    # Add platform-specific flags if needed
+    if get_os_name() == 'darwin':
+        # macOS: nothing extra for now, but could add deployment target, etc.
+        pass
+    elif get_os_name() == 'linux':
+        # Linux: nothing extra for now
+        pass
+    elif get_os_name() == 'windows':
+        # Windows: handled by MSYS2 in CI
+        pass
+    return env
+
 # Custom build_ext command
 class build_ext(_build_ext):
     def run(self):
-        # --- Determine Target Architecture from cibuildwheel --- 
-        target_arch = os.environ.get('CIBW_ARCHS', platform.machine())
-        # Normalize arch string for directory naming (e.g., x86_64 -> x86_64)
-        # This handles potential variations like 'native' or lists in CIBW_ARCHS
-        # A simple approach for now, might need refinement for universal2 etc.
-        if 'arm64' in target_arch or 'aarch64' in target_arch:
-            norm_arch = 'arm64' # Use a consistent name
-        elif 'x86_64' in target_arch or 'AMD64' in target_arch:
-             norm_arch = 'x86_64'
-        elif 'x86' in target_arch or 'i686' in target_arch or 'win32' in target_arch:
-             norm_arch = 'x86'
-        else:
-             norm_arch = target_arch # Use as-is if unknown
-        print(f"Normalized target architecture for cache dir: {norm_arch}", flush=True)
-
-        # Define shared, architecture-specific paths
-        # Use a directory outside the standard temp build dir to persist across python versions
-        cache_base_dir = os.path.abspath(os.path.join('build', 'libpostal_install_cache'))
-        libpostal_install_prefix = os.path.join(cache_base_dir, norm_arch)
+        cache_base_dir = get_cache_dir()
+        norm_arch = normalize_arch(os.environ.get('CIBW_ARCHS', platform.machine()))
+        os_name = get_os_name()
+        libpostal_commit = get_libpostal_commit()
+        libpostal_install_prefix = cache_base_dir
         libpostal_lib_dir = os.path.join(libpostal_install_prefix, 'lib')
         libpostal_include_dir = os.path.join(libpostal_install_prefix, 'include')
         libpostal_static_lib = os.path.join(libpostal_lib_dir, 'libpostal.a')
+        print(f"[pypostal] OS: {os_name}, Arch: {norm_arch}, libpostal commit: {libpostal_commit}")
+        print(f"[pypostal] Cache dir: {cache_base_dir}")
+        print(f"[pypostal] Expected static lib: {libpostal_static_lib}")
 
         # Check if libpostal is already built for this architecture
         if os.path.exists(libpostal_static_lib):
@@ -187,6 +247,53 @@ class build_ext(_build_ext):
 
         # ----- End of Conditional Build ----- #
 
+        # --- Universal2 static lib build for macOS ---
+        if os_name == 'darwin' and 'universal2' in os.environ.get('CIBW_ARCHS', ''):
+            x86_prefix = os.path.join(cache_base_dir + '-x86_64')
+            arm_prefix = os.path.join(cache_base_dir + '-arm64')
+            x86_lib = os.path.join(x86_prefix, 'lib', 'libpostal.a')
+            arm_lib = os.path.join(arm_prefix, 'lib', 'libpostal.a')
+            # Build for x86_64 if not present
+            if not os.path.exists(x86_lib):
+                print('::group::Building libpostal for x86_64')
+                env = get_build_env().copy()
+                env['CFLAGS'] = '-arch x86_64 -fPIC'
+                env['LDFLAGS'] = '-arch x86_64'
+                subprocess.check_call(['./bootstrap.sh'], cwd=vendor_dir, env=env)
+                subprocess.check_call([
+                    './configure', '--disable-shared', '--enable-static', f'--prefix={x86_prefix}'
+                ], cwd=vendor_dir, env=env)
+                subprocess.check_call(['make', 'clean'], cwd=vendor_dir, env=env)
+                subprocess.check_call(['make', '-j4'], cwd=vendor_dir, env=env)
+                subprocess.check_call(['make', 'install'], cwd=vendor_dir, env=env)
+                print('::endgroup::')
+            # Build for arm64 if not present
+            if not os.path.exists(arm_lib):
+                print('::group::Building libpostal for arm64')
+                env = get_build_env().copy()
+                env['CFLAGS'] = '-arch arm64 -fPIC'
+                env['LDFLAGS'] = '-arch arm64'
+                subprocess.check_call(['./bootstrap.sh'], cwd=vendor_dir, env=env)
+                subprocess.check_call([
+                    './configure', '--disable-shared', '--enable-static', '--disable-sse2', f'--prefix={arm_prefix}'
+                ], cwd=vendor_dir, env=env)
+                subprocess.check_call(['make', 'clean'], cwd=vendor_dir, env=env)
+                subprocess.check_call(['make', '-j4'], cwd=vendor_dir, env=env)
+                subprocess.check_call(['make', 'install'], cwd=vendor_dir, env=env)
+                print('::endgroup::')
+            # Combine with lipo
+            print('::group::Creating universal2 libpostal.a with lipo')
+            os.makedirs(libpostal_lib_dir, exist_ok=True)
+            lipo_cmd = ['lipo', '-create', '-output', libpostal_static_lib, x86_lib, arm_lib]
+            print('Running:', ' '.join(lipo_cmd))
+            subprocess.check_call(lipo_cmd)
+            print('::endgroup::')
+            # Diagnostics
+            print('::group::Universal2 libpostal.a diagnostics')
+            os.system(f'lipo -info "{libpostal_static_lib}"')
+            os.system(f'ls -lh "{libpostal_static_lib}"')
+            print('::endgroup::')
+
         # Update Extension paths *before* calling the original build_ext
         # Always point to the shared architecture-specific cache location
         print(f"Updating extension paths to use cache: include={libpostal_include_dir}, lib={libpostal_lib_dir}", flush=True)
@@ -220,6 +327,29 @@ class build_ext(_build_ext):
         print("Running original build_ext command...", flush=True)
         _build_ext.run(self)
 
+        # Diagnostics after build
+        if os.path.exists(libpostal_static_lib):
+            print(f"[pypostal] libpostal.a found at: {libpostal_static_lib}")
+            if os_name == 'darwin':
+                os.system(f'lipo -info "{libpostal_static_lib}"')
+            os.system(f'ls -lh "{libpostal_static_lib}"')
+        else:
+            print(f"[pypostal] ERROR: libpostal.a NOT FOUND at {libpostal_static_lib}", file=sys.stderr)
+            sys.exit(1)
+        # Print linker flags and .so diagnostics
+        print("[pypostal] Extension linker flags and artifact info:")
+        for ext in self.extensions:
+            print(f"  Extension: {ext.name}")
+            print(f"    extra_link_args: {getattr(ext, 'extra_link_args', None)}")
+            ext_path = self.get_ext_fullpath(ext.name)
+            abs_ext_path = os.path.abspath(ext_path)
+            if os.path.exists(abs_ext_path):
+                print(f"    .so file: {abs_ext_path}")
+                os.system(f'ls -lh "{abs_ext_path}"')
+                if os_name == 'darwin':
+                    os.system(f'otool -L "{abs_ext_path}"')
+            else:
+                print(f"    [WARN] .so file not found at {abs_ext_path}")
 
 def main():
     # Most metadata moved to pyproject.toml
