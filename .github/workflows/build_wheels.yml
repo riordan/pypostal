@@ -20,15 +20,21 @@ jobs:
       matrix:
         # Define specific combinations for Linux, keep macOS simple
         include:
-          - os: ubuntu-latest # Standard x86_64 runner
+          - os: ubuntu-latest
             arch: x86_64
             cibw_archs: "x86_64"
-          - os: ubuntu-22.04-arm # Native ARM64 runner
+          - os: ubuntu-22.04-arm
             arch: aarch64
             cibw_archs: "aarch64"
-          - os: macos-latest # Builds both x86_64 and arm64 via cibuildwheel default
-            arch: universal
-            cibw_archs: "auto" # Let cibuildwheel handle macOS archs
+          - os: macos-latest
+            arch: arm64
+            cibw_archs: "arm64"
+          - os: macos-latest
+            arch: x86_64
+            cibw_archs: "x86_64"
+          - os: macos-latest
+            arch: universal2
+            cibw_archs: "universal2"
           # - os: windows-latest # Add back if/when needed
           #   arch: AMD64
           #   cibw_archs: "AMD64"
