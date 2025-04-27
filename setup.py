@@ -95,15 +95,17 @@ def get_build_env():
 # Custom build_ext command
 class build_ext(_build_ext):
     def clean_libpostal_build_dir(self):
-        print("[pypostal] Cleaning libpostal build directory with 'make clean' and 'git clean -xfd'...", flush=True)
-        try:
-            subprocess.check_call(['make', 'clean'], cwd=vendor_dir)
-        except Exception as e:
-            print(f"[pypostal] Warning: 'make clean' failed: {e}", flush=True)
-        try:
-            subprocess.check_call(['git', 'clean', '-xfd'], cwd=vendor_dir)
-        except Exception as e:
-            print(f"[pypostal] Warning: 'git clean -xfd' failed: {e}", flush=True)
+        print("[pypostal] Relaxed cleaning: only running 'make clean' if Makefile exists, and skipping 'git clean -xfd' to avoid deleting build scripts.", flush=True)
+        makefile_path = os.path.join(vendor_dir, 'Makefile')
+        if os.path.exists(makefile_path):
+            try:
+                subprocess.check_call(['make', 'clean'], cwd=vendor_dir)
+            except Exception as e:
+                print(f"[pypostal] Warning: 'make clean' failed: {e}", flush=True)
+        else:
+            print("[pypostal] Skipping 'make clean': Makefile not found.", flush=True)
+        # No longer running 'git clean -xfd' to avoid deleting important build/configure scripts
+        # If you want to clean build artifacts, do so more selectively here.
 
     def run(self):
         cache_base_dir = get_cache_dir()
