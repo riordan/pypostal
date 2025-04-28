@@ -322,25 +322,24 @@ def build_libpostal_for_arch(arch):
     for var in build_env_vars:
         original_env[var] = os.environ.get(var, '')
     
-    # Clean environment of any previous architecture flags
-    for var in ['CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'LDFLAGS']:
-        if var in os.environ:
-            os.environ[var] = ' '.join(flag for flag in os.environ.get(var, '').split() 
-                                     if '-arch' not in flag)
+    # Explicitly get flags for the target architecture (includes -fPIC)
+    arch_flags = get_arch_flags(arch)
     
-    # Set architecture-specific flags based on target architecture
+    # Always set CFLAGS and LDFLAGS for the build
+    os.environ['CFLAGS'] = arch_flags['CFLAGS']
+    os.environ['LDFLAGS'] = arch_flags['LDFLAGS']
+    
+    # Handle macOS specific ARCHFLAGS if necessary
     if get_os_name() == 'macos':
-        arch_flag = f"-arch {arch}"
-        for var in ['CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'LDFLAGS']:
-            current = os.environ.get(var, '')
-            os.environ[var] = f"{current} {arch_flag}".strip()
-        
-        # Also set ARCHFLAGS which is used by Python's build system
-        os.environ['ARCHFLAGS'] = arch_flag
-        
+        os.environ['ARCHFLAGS'] = arch_flags['CFLAGS'] # macOS uses CFLAGS for ARCHFLAGS sometimes
         print(f"[pypostal] Set architecture flags for {arch}:", flush=True)
         for var in ['CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'LDFLAGS', 'ARCHFLAGS']:
             print(f"  {var}={os.environ.get(var, '')}", flush=True)
+    else:
+        # Clear ARCHFLAGS if it exists for non-macOS to avoid confusion
+        if 'ARCHFLAGS' in os.environ:
+            del os.environ['ARCHFLAGS']
+        print(f"[pypostal] Set environment for {arch}: CFLAGS='{os.environ['CFLAGS']}' LDFLAGS='{os.environ['LDFLAGS']}'", flush=True)
     
     try:
         # Bootstrap if needed

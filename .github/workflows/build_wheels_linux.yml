@@ -94,12 +94,7 @@ jobs:
           CIBW_BUILD: "cp311-* cp312-*"
           # Integrate bootstrap and -fPIC directly in the CIBW_BEFORE_BUILD_LINUX
           CIBW_BEFORE_BUILD_LINUX: >
-            dnf install -y autoconf automake libtool pkgconfig curl perl-IPC-Cmd &&
-            cd {package}/vendor/libpostal &&
-            (if [ -f Makefile ]; then make distclean || echo "Warning: distclean failed, continuing anyway"; fi) &&
-            ./bootstrap.sh &&
-            CFLAGS="-fPIC" ./configure &&
-            cd {package}
+            dnf install -y autoconf automake libtool pkgconfig curl perl-IPC-Cmd
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
