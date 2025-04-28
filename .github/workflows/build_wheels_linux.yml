@@ -84,6 +84,48 @@ jobs:
           EOF
           chmod +x copy_cache.sh
 
+      # Create script to pre-bootstrap libpostal before building
+      - name: Create bootstrap script
+        run: |
+          cat > bootstrap_libpostal.sh << 'EOF'
+          #!/bin/bash
+          set -ex
+          
+          echo "Ensuring libpostal is properly bootstrapped before build"
+          cd vendor/libpostal
+          
+          # Clear any previous autotools files
+          if [ -f Makefile ]; then
+            echo "Makefile exists, running distclean first"
+            make distclean || echo "Warning: distclean failed, continuing anyway"
+          fi
+          
+          # Run bootstrap to regenerate configure script
+          echo "Running bootstrap.sh"
+          ./bootstrap.sh
+          
+          # Add -fPIC flag to CFLAGS for Linux builds
+          export CFLAGS="$CFLAGS -fPIC"
+          echo "Using CFLAGS: $CFLAGS"
+          
+          # Configure with -fPIC flag
+          ./configure CFLAGS="-fPIC" || {
+            echo "Configure failed, showing config.log:"
+            cat config.log
+            exit 1
+          }
+          
+          # Verify configure script was created
+          if [ -f configure ]; then
+            echo "Bootstrap successful, configure script created"
+            ls -la
+          else
+            echo "ERROR: Bootstrap failed, no configure script found"
+            exit 1
+          fi
+          EOF
+          chmod +x bootstrap_libpostal.sh
+
       - name: Ensure cache directory exists
         shell: bash
         run: mkdir -p build/libpostal_install_cache
@@ -92,7 +134,9 @@ jobs:
         uses: pypa/cibuildwheel@v2.17.0
         env:
           CIBW_BUILD: "cp311-* cp312-*"
-          CIBW_BEFORE_BUILD_LINUX: "dnf install -y autoconf automake libtool pkgconfig curl perl-IPC-Cmd"
+          CIBW_BEFORE_BUILD_LINUX: >
+            dnf install -y autoconf automake libtool pkgconfig curl perl-IPC-Cmd &&
+            bash /host/bootstrap_libpostal.sh
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
