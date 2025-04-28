@@ -416,7 +416,11 @@ def build_universal2_library():
     os.environ['ARCHFLAGS'] = '-arch arm64'
     
     # Clean build directory before arm64 build
-    clean_libpostal_build_dir()
+    print("[pypostal] Running git clean -fdx before arm64 build", flush=True)
+    try:
+        subprocess.check_call(['git', 'clean', '-fdx'], cwd=vendor_dir)
+    except Exception as e:
+        print(f"[pypostal] Warning: git clean failed: {e}", flush=True)
     
     # Build for arm64
     arm64_lib = build_libpostal_for_arch('arm64')
@@ -431,8 +435,11 @@ def build_universal2_library():
         os.environ[var] = value
     
     # Run distclean to completely reset the build environment
-    print("[pypostal] Running thorough clean before x86_64 build", flush=True)
-    clean_libpostal_build_dir()
+    print("[pypostal] Running git clean -fdx before x86_64 build", flush=True)
+    try:
+        subprocess.check_call(['git', 'clean', '-fdx'], cwd=vendor_dir)
+    except Exception as e:
+        print(f"[pypostal] Warning: git clean failed: {e}", flush=True)
     
     # Bootstrap again to ensure clean autoconf files
     bootstrap_libpostal()
