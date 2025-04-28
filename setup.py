@@ -306,8 +306,17 @@ def build_libpostal_for_arch(arch):
     
     print(f"[pypostal] Need to build libpostal for {arch}", flush=True)
     
-    # Clean any previous build
-    clean_libpostal_build_dir()
+    # Clean any previous build using git clean for robustness
+    print(f"[pypostal] Running git clean -fdx before {arch} build", flush=True)
+    try:
+        # Ensure we are in the correct directory relative to setup.py
+        if not os.path.exists(os.path.join(vendor_dir, ".git")):
+            print(f"[pypostal] Warning: .git directory not found in {vendor_dir}, skipping git clean.", flush=True)
+        else:
+            subprocess.check_call(['git', 'clean', '-fdx'], cwd=vendor_dir)
+    except Exception as e:
+        print(f"[pypostal] Warning: git clean failed in {vendor_dir}: {e}", flush=True)
+    # clean_libpostal_build_dir() # Replaced with git clean
     
     # Ensure the install directory exists
     os.makedirs(install_prefix, exist_ok=True)
