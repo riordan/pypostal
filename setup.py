@@ -388,114 +388,6 @@ def build_libpostal_for_arch(arch):
                 del os.environ[var]
         print(f"[pypostal] Restored original environment", flush=True)
 
-def build_universal2_library():
-    """Build a universal2 library by combining arm64 and x86_64 builds.
-    
-    Uses a hermetic approach with complete isolation between architecture builds
-    to prevent any cross-contamination of object files or build artifacts.
-    """
-    print("[pypostal] Building universal2 library with hermetic approach", flush=True)
-    
-    # ======================================================================
-    # Build arm64 first
-    # ======================================================================
-    print("[pypostal] Step 1: Building arm64 library", flush=True)
-    
-    # Store original environment variables
-    original_env = {}
-    for var in ['CFLAGS', 'LDFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'CC', 'CXX', 'ARCHFLAGS']:
-        original_env[var] = os.environ.get(var, '')
-    
-    # Clear environment of any architecture-specific flags
-    for var in ['CFLAGS', 'LDFLAGS', 'CPPFLAGS', 'CXXFLAGS']:
-        if var in os.environ:
-            os.environ[var] = ' '.join(flag for flag in os.environ.get(var, '').split() 
-                                     if '-arch' not in flag)
-    
-    # Set arm64 architecture explicitly
-    os.environ['ARCHFLAGS'] = '-arch arm64'
-    
-    # Clean build directory before arm64 build
-    print("[pypostal] Running git clean -fdx before arm64 build", flush=True)
-    try:
-        subprocess.check_call(['git', 'clean', '-fdx'], cwd=vendor_dir)
-    except Exception as e:
-        print(f"[pypostal] Warning: git clean failed: {e}", flush=True)
-    
-    # Build for arm64
-    arm64_lib = build_libpostal_for_arch('arm64')
-    
-    # ======================================================================
-    # Completely clean the environment between builds
-    # ======================================================================
-    print("[pypostal] Step 2: Complete clean between architecture builds", flush=True)
-    
-    # Restore original environment
-    for var, value in original_env.items():
-        os.environ[var] = value
-    
-    # Run distclean to completely reset the build environment
-    print("[pypostal] Running git clean -fdx before x86_64 build", flush=True)
-    try:
-        subprocess.check_call(['git', 'clean', '-fdx'], cwd=vendor_dir)
-    except Exception as e:
-        print(f"[pypostal] Warning: git clean failed: {e}", flush=True)
-    
-    # Bootstrap again to ensure clean autoconf files
-    bootstrap_libpostal()
-    
-    # ======================================================================
-    # Build x86_64 
-    # ======================================================================
-    print("[pypostal] Step 3: Building x86_64 library", flush=True)
-    
-    # Clear environment of any architecture-specific flags
-    for var in ['CFLAGS', 'LDFLAGS', 'CPPFLAGS', 'CXXFLAGS']:
-        if var in os.environ:
-            os.environ[var] = ' '.join(flag for flag in os.environ.get(var, '').split() 
-                                     if '-arch' not in flag)
-    
-    # Set x86_64 architecture explicitly
-    os.environ['ARCHFLAGS'] = '-arch x86_64'
-    
-    # Build for x86_64
-    x86_64_lib = build_libpostal_for_arch('x86_64')
-    
-    # ======================================================================
-    # Combine libraries with lipo
-    # ======================================================================
-    print("[pypostal] Step 4: Creating universal binary with lipo", flush=True)
-    
-    # Get the universal2 cache directory
-    universal2_dir = get_cache_dir('universal2')
-    universal2_lib_dir = os.path.join(universal2_dir, 'lib')
-    universal2_include_dir = os.path.join(universal2_dir, 'include')
-    universal2_lib_path = os.path.join(universal2_lib_dir, 'libpostal.a')
-    
-    # Create the universal2 directories
-    os.makedirs(universal2_lib_dir, exist_ok=True)
-    os.makedirs(universal2_include_dir, exist_ok=True)
-    
-    # Copy the include files (they should be the same from either build)
-    arm64_include_dir = os.path.dirname(os.path.dirname(arm64_lib)) + '/include'
-    subprocess.check_call(['cp', '-r', f"{arm64_include_dir}/", f"{universal2_include_dir}/"])
-    
-    # Create the universal2 library
-    print(f"[pypostal] Creating universal2 library with lipo: {universal2_lib_path}", flush=True)
-    lipo_cmd = ['lipo', '-create', '-output', universal2_lib_path, arm64_lib, x86_64_lib]
-    subprocess.check_call(lipo_cmd)
-    
-    # Verify the universal2 library
-    lipo_info = subprocess.check_output(['lipo', '-info', universal2_lib_path], text=True).strip()
-    print(f"[pypostal] Universal library info: {lipo_info}", flush=True)
-    
-    if 'arm64' not in lipo_info or 'x86_64' not in lipo_info:
-        print(f"Error: Universal library does not contain both architectures: {lipo_info}", file=sys.stderr)
-        sys.exit(1)
-    
-    print(f"[pypostal] Universal2 library successfully created", flush=True)
-    return universal2_lib_path
-
 # ===============================================================================
 # Custom build_ext command
 # ===============================================================================
@@ -516,14 +408,9 @@ class build_ext(_build_ext):
         
         try:
             # Build libpostal for the current architecture or universal2
-            if is_universal2_build():
-                print("[pypostal] Building universal2 library...", flush=True)
-                static_lib_path = build_universal2_library()
-                install_prefix = os.path.dirname(os.path.dirname(static_lib_path))
-            else:
-                print(f"[pypostal] Building for single architecture: {arch}", flush=True)
-                static_lib_path = build_libpostal_for_arch(arch)
-                install_prefix = os.path.dirname(os.path.dirname(static_lib_path))
+            print(f"[pypostal] Building for single architecture: {arch}", flush=True)
+            static_lib_path = build_libpostal_for_arch(arch)
+            install_prefix = os.path.dirname(os.path.dirname(static_lib_path))
             
             # Get the include and lib directories
             include_dir = os.path.join(install_prefix, 'include')
@@ -543,13 +430,8 @@ class build_ext(_build_ext):
                 
                 # Set extra compiler flags to ensure correct architecture in the extension build
                 if get_os_name() == 'macos':
-                    if is_universal2_build():
-                        # For universal2 build, add both architectures
-                        arch_flags = ['-arch', 'arm64', '-arch', 'x86_64']
-                    else:
-                        # For single architecture build
-                        arch_flags = ['-arch', arch]
-                        
+                    arch_flags = ['-arch', arch]
+                    
                     # Add architecture flags to extension
                     if not hasattr(ext, 'extra_compile_args'):
                         ext.extra_compile_args = []
