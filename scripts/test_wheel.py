@@ -18,6 +18,30 @@ def run_basic_tests():
     import postal
     print(f"postal imported successfully. __file__={postal.__file__}")
 
+    # --- NEW: Download and Initialize ---
+    print("\nAttempting to download model data...")
+    try:
+        success = postal.download_model() # Use default 'latest'
+        if not success:
+            print("Error: Failed to download model data.")
+            sys.exit(1)
+        print("Model download check/attempt complete.")
+    except Exception as e:
+        print(f"Error during model download: {e}")
+        sys.exit(1)
+
+    print("\nInitializing libpostal...")
+    try:
+        postal.initialize()
+        print("Libpostal initialized.")
+    except postal.PostalDataNotFound as e:
+         print(f"ERROR: Initialization failed - Data not found: {e}")
+         sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: Initialization failed: {e}")
+        sys.exit(1)
+    # --- END NEW ---
+
     print("\nTesting postal parser functionality...")
     from postal.parser import parse_address
     parsed = parse_address('781 Franklin Ave Crown Heights Brooklyn NYC NY 11216 USA')

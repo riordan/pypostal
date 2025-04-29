@@ -215,23 +215,28 @@ init_normalize(void) {
     PyObject *module = Py_InitModule("_normalize", normalize_methods);
 #endif
 
-    if (module == NULL)
+    if (module == NULL) {
         INITERROR;
+    }
+
+   // REMOVED: Automatic libpostal setup calls. Initialization is now handled
+   // explicitly via postal.initialize() which calls _capi.setup_datadir().
+#   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+#
+#    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir)) ||
+#        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
+#            PyErr_SetString(PyExc_TypeError,
+#                            "Error loading libpostal");
+#    }
+
+#ifndef IS_PY3K
+
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_normalize.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
         INITERROR;
-    }
-
-   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
-
-    if ((datadir!=NULL && !libpostal_setup_datadir(datadir)) || !libpostal_setup()) {
-            PyErr_SetString(PyExc_RuntimeError,
-                            "Could not load libpostal");
-            Py_DECREF(module);
-            INITERROR;
     }
 
     PyModule_AddObject(module, "NORMALIZE_STRING_LATIN_ASCII", PyLong_FromUnsignedLongLong(LIBPOSTAL_NORMALIZE_STRING_LATIN_ASCII));

@@ -192,14 +192,6 @@ init_parser(void) {
         INITERROR;
     }
 
-   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
-
-    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_parser_datadir(datadir)) ||
-        (!libpostal_setup() || !libpostal_setup_parser())) {
-            PyErr_SetString(PyExc_TypeError,
-                            "Error loading libpostal data");
-    }
-
 #ifndef IS_PY3K
     Py_AtExit(&cleanup_libpostal);
 #endif

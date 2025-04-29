@@ -26,7 +26,7 @@
     *   [x] Action: Specify `build-backend = "setuptools.build_meta"`.
     *   [x] Action: Migrate all metadata (name, version, author, description, license, etc.) from `setup.py`/`setup.cfg` to `[project]` section in `pyproject.toml`.
     *   [x] Action: Define minimal Python version required (`requires-python`).
-    *   [x] Action: Define runtime dependencies in `[project.dependencies]` (initially empty or just core requirements, downloader dependencies added later).
+    *   [x] Action: Define runtime dependencies in `[project.dependencies]`.
     *   [x] Action: Remove `setup.cfg`. Keep `setup.py` for now as it will contain the build logic for the C extension and `libpostal`.
     *   *Outcome:* Project uses `pyproject.toml` for configuration, adhering to modern Python packaging standards.
 *   [x] **1.4: Setup Basic CI/CD (GitHub Actions):**
@@ -37,111 +37,79 @@
         *   Check out the code (`actions/checkout@v4` with `submodules: true`).
         *   Set up Python.
         *   (Optional) Run linters/formatters (e.g., `black`, `flake8`).
-        *   (Placeholder) Attempt a basic package build (`python -m build --sdist`) - *This will initially fail until Phase 2 is addressed.*
+        *   Attempt a basic package build (`python -m build --sdist`).
     *   *Outcome:* A basic CI workflow is in place, checking out submodules correctly.
 
 ---
 
 ## Phase 2: Bundling `libpostal` into Wheels
 
-*Objective: Modify the build process to compile `libpostal` and link it into the `pypostal` C extension, then use `cibuildwheel` to generate multi-platform wheels.* **(COMPLETED, but see below for major improvements)**
+*Objective: Modify the build process to compile `libpostal` and link it into the `pypostal` C extension, then use `cibuildwheel` to generate multi-platform wheels.* **(COMPLETED)**
 
 *   [x] **2.1: Customize Build Script (`setup.py`):**
-    *   [x] Action: Define a custom build step (e.g., subclass `setuptools.command.build_ext.build_ext`).
+    *   [x] Action: Define a custom build step (subclass `build_ext`).
     *   [x] Action: Implement logic within the custom step to:
-        *   [x] Determine the target platform and architecture (needed for conditional flags).
-        *   [x] Change directory to `vendor/libpostal`.
-        *   [x] Run `./bootstrap.sh` (required for `autotools`).
-        *   [x] Run `./configure`:
-            *   [x] Use flags to enable static linking if feasible (`--disable-shared --enable-static`).
-            *   [x] Set an appropriate install prefix (`--prefix`) pointing to a build cache dir **unique to OS, architecture, and libpostal commit**.
-            *   [x] Conditionally add `--disable-sse2` only if building for `arm64` targets (macOS or Linux).
-        *   [x] Run `make clean` and `git clean -xfd` before each build to ensure a pristine build directory.
-        *   [x] Run `make -jN` (use available cores).
-        *   [x] Run `make install` (to install into the prefix).
-        *   [x] Handle potential build errors.
-        *   [x] Implement build caching logic to compile `libpostal` only once per architecture per run.
-        *   [x] Set `-fPIC` flag in `CFLAGS` before configure/make.
-    *   [x] Action: Configure the `pypostal` C extension (`Extension` object in `setup.py`) to:
-        *   [x] Update `include_dirs` and `library_dirs` dynamically to point to the built `libpostal` in the prefix/cache dir.
-        *   [x] Add `postal` to `libraries`.
-        *   [x] Set `LIBRARY_PATH` env var before compiling extensions.
-    *   *Outcome:* Running `python setup.py build_ext` (or `python -m build`) successfully compiles `libpostal` from the vendored source and links the `pypostal` extension against it, using caching for efficiency.
+        *   [x] Determine platform/architecture.
+        *   [x] Clean build dir (`clean_libpostal_build_dir` - Note: Switched back from `git clean`).
+        *   [x] Run `bootstrap.sh`.
+        *   [x] Run `configure` with static linking, prefix, and conditional flags (`--disable-sse2`).
+        *   [x] Run `make -jN` and `make install` into cache/prefix.
+        *   [x] Handle build errors.
+        *   [x] Set `-fPIC` flag (via `get_arch_flags`).
+    *   [x] Action: Configure C extensions (`Extension` objects) to use include/lib dirs from the prefix.
+    *   *Outcome:* `python -m build` successfully compiles `libpostal` and links the extension against the static library.
 
 *   [x] **2.2: Integrate `cibuildwheel` into CI:**
-    *   [x] Action: Update/Create the GitHub Actions workflow (`.github/workflows/build_wheels.yml`).
-    *   [x] Action: Use the `cibuildwheel` action or run it directly.
-    *   [x] Action: Configure the target platforms (`CIBW_PLATFORM` or matrix): Linux (`manylinux_*`), macOS (x86_64, arm64, universal2), Windows (amd64).
-    *   [x] Action: Use platform-specific `CIBW_BEFORE_BUILD_*` to install `libpostal`'s build dependencies:
-        *   [x] Linux (`manylinux_2_28`): Use `dnf` to install `autoconf automake libtool pkgconfig curl perl-IPC-Cmd`.
-        *   [x] macOS: Use `brew` to install `autoconf automake libtool pkg-config curl`.
-        *   [x] Windows: Use `msys2/setup-msys2` action to install required MinGW/Autotools environment.
-    *   [x] Action: Specify `manylinux_2_28` images for Linux builds.
-    *   [x] Action: Set `CIBW_ENVIRONMENT` to pass necessary variables if needed (e.g., maybe related to static linking).
-    *   [x] Action: Define `CIBW_TEST_COMMAND`:
-        *   [x] Install the built wheel (`pip install {package}`).
-        *   [x] Run a basic Python import test: `python -c "import postal; print('pypostal imported successfully')"`. *Note: Full initialization will fail until Phase 3.*
-    *   [x] Action: Configure the workflow to upload the generated wheels (`dist/*.whl`) as build artifacts.
-    *   *Outcome:* CI successfully builds binary wheels for all target platforms and architectures. (*Pending confirmation from run #9/10*).
+    *   [x] Action: Create separate workflows for Linux (`build_wheels_linux.yml`) and macOS (`build_wheels_macos.yml`).
+    *   [x] Action: Use the `cibuildwheel` action.
+    *   [x] Action: Use matrix strategy for Linux (x86_64, aarch64) and macOS (x86_64, arm64).
+    *   [x] Action: Install build dependencies using `dnf` / `brew` in `CIBW_BEFORE_BUILD_*`.
+    *   [x] Action: Specify `manylinux_2_28` images.
+    *   [x] Action: Define `CIBW_TEST_COMMAND` to use `scripts/test_wheel.py`.
+    *   [x] Action: Configure artifact uploads.
+    *   [x] Action: Refactored workflows to use workflow-level `env:` for common variables.
+    *   [x] Action: Disabled `actions/cache` for `libpostal` builds to simplify debugging.
+    *   *Outcome:* CI successfully builds binary wheels for Linux and macOS across target architectures.
 
-*   **[NEW: 2.3: Major Multi-Arch Build/Cache Refactor]**
-    *   [ ] Action: Split CI into three jobs: `build_wheels_linux`, `build_wheels_macos`, `build_wheels_windows`.
-    *   [ ] Action: For **macOS**, run all three builds (arm64, x86_64, universal2) sequentially in a single job/runner:
-        *   [ ] Before each build, run `make clean` and `git clean -xfd` in `vendor/libpostal`.
-        *   [ ] Use a unique install/cache prefix for each build: `build/libpostal_install_cache/macos-arm64-<commit>/`, etc.
-        *   [ ] For universal2, build both archs, then use `lipo` to combine static libs into a universal2 cache dir.
-        *   [ ] Copy headers from one of the builds to the universal2 cache dir.
-        *   [ ] Restore and save a separate cache for each build type.
-        *   [ ] Upload all three wheel types as artifacts.
-    *   [ ] Action: For **Linux** and **Windows**, continue to use one build per job/arch, each with its own cache keyed by OS/arch/commit.
-    *   [ ] Action: Ensure all cache keys and install prefixes are unique per OS/arch/commit to avoid cross-contamination.
-    *   [ ] Action: Document this structure and rationale in the roadmap and CI comments.
-    *   *Outcome:* Robust, efficient, and maintainable multi-arch builds with no cross-arch/OS cache contamination, and all wheels built and tested in isolation.
+*   [ ] ~~**2.3: Major Multi-Arch Build/Cache Refactor:**~~ (Superseded by separate jobs/matrix approach)
+    *   *Outcome:* Robust multi-arch builds achieved via separate jobs/matrix per OS.
 
 ---
 
 ## Phase 3: Runtime Model Management
 
-*Objective: Implement Python code within `pypostal` to handle the discovery, download, caching, and loading of `libpostal` data models.*
+*Objective: Implement Python code within `pypostal` to handle the discovery, download, caching, and loading of `libpostal` data models.* **(COMPLETED)**
 
-*   [ ] **3.1: Design Model Hosting & Manifest:**
-    *   [ ] Action: Decide on hosting location for `libpostal` data tarballs (e.g., GitHub Releases, S3). Confirm stability of existing URLs or plan for re-hosting.
-    *   [ ] Action: Define the structure of `models.json` manifest file (versions, URLs, sha256 checksums, file sizes).
-    *   [ ] Action: Create the initial `models.json` for the default model.
-    *   [ ] Action: Host the `models.json` file (e.g., alongside models or potentially bundled in the wheel).
-    *   *Outcome:* Clear plan for where models and metadata live.
-*   [ ] **3.2: Implement Downloader Module (`postal/downloader.py`):**
-    *   [ ] Action: Create the `postal/downloader.py` file.
-    *   [ ] Action: Add runtime dependencies (`requests`, `platformdirs`, `tqdm`) to `pyproject.toml` under `[project.dependencies]`.
-    *   [ ] Action: Implement `get_cache_dir()` using `platformdirs`.
-    *   [ ] Action: Implement `list_available_models()` (fetches/parses `models.json`).
-    *   [ ] Action: Implement `get_downloaded_models()` (scans cache directory).
-    *   [ ] Action: Implement `download_model(version='latest', force=False)`:
-        *   Fetch manifest if needed.
-        *   Resolve version ('latest').
-        *   Check cache.
-        *   Download (use `requests`, `tqdm`, streaming).
-        *   Verify checksum.
-        *   Extract tarball (`tarfile`) to versioned subdirectory in cache (e.g., `~/.cache/pypostal/models/libpostal_data-vX.X/data`).
-        *   Implement robust error handling.
-    *   [ ] Action: Implement `get_data_dir(version='latest')` returning the path to the extracted *data* directory.
-    *   *Outcome:* Python module capable of managing model downloads and cache.
-*   [ ] **3.3: Integrate Model Loading into `pypostal`:**
-    *   [ ] Action: Identify the C API call in `libpostal` used to set the data directory at runtime (likely `libpostal_setup_datadir()` based on README examples).
-    *   [ ] Action: **Verify/Modify `pypostal` C Extension:** Ensure a Python-callable function exists in `pypostal`'s C code that accepts a path string and calls the appropriate `libpostal` setup function (e.g., `libpostal_setup_datadir()`). Add or modify if necessary. Rebuild extension.
-    *   [ ] Action: Modify `postal/__init__.py` or a core setup function (e.g., `postal.init()`):
-        *   Allow specifying a desired model version (optional, default to 'latest' or a pinned version).
-        *   On initialization, call `downloader.get_data_dir()` to find the required model data path.
-        *   If path is `None`: Raise an informative `FileNotFoundError` or `PostalDataNotFound` exception guiding the user to run `postal.download_model()`.
-        *   If path exists: Call the C extension function to pass this path to `libpostal`'s setup routine *before* any parsing/expansion functions are used.
-    *   [ ] Action: Expose the `download_model` function publicly (e.g., `from postal import download_model`).
-    *   *Outcome:* `pypostal` automatically uses downloaded data on initialization, or provides clear instructions if data is missing.
-*   [ ] **3.4: Update CI Test Command:**
-    *   [ ] Action: Modify `CIBW_TEST_COMMAND` in the wheel building workflow.
-    *   [ ] Action: Add steps to:
-        *   Run `python -c "from postal import download_model; download_model()"`. (May need adjustments for testing environments without network access - potentially pre-downloading in an earlier step or mocking).
-        *   Run `python -c "from postal import init, expand, parse; init(); print(expand.expand_address('test')); print(parse.parse_address('test'))"`.
-    *   *Outcome:* CI tests validate the download mechanism and basic end-to-end functionality using the bundled library and downloaded data.
+*   [x] **3.1: Design Model Hosting & Manifest:**
+    *   [x] Action: Decided to use existing S3/GitHub URLs for default/Senzing models initially.
+    *   [x] Action: Defined multi-component `models.json` structure (base, parser, lc) with URLs and SHA256 checksums.
+    *   [x] Action: Created `metadata/models.json` with info for "default" (v1.0) and "senzing" (v1.1) models.
+    *   [x] Action: Hosting `models.json` within the repository (`metadata/models.json`).
+    *   *Outcome:* Clear plan and initial implementation for model metadata.
+*   [x] **3.2: Implement Downloader Module (`postal/downloader.py`):**
+    *   [x] Action: Created `postal/downloader.py`.
+    *   [x] Action: Added runtime dependencies (`requests`, `platformdirs`, `tqdm`) to `pyproject.toml`.
+    *   [x] Action: Implemented `get_cache_dir()` using `platformdirs` (using `libpostal`/`libpostal` names).
+    *   [x] Action: Implemented `_fetch_manifest()`, `list_available_models()`.
+    *   [x] Action: Implemented `get_downloaded_models()` and `get_data_dir()` using a helper (`_is_model_dir_complete`) to check for all 3 data components.
+    *   [x] Action: Refactored `download_model(version='default', force=False)` to handle downloading/extracting multiple components (base, parser, lc) per model version.
+    *   [x] Action: Added type hints to `postal/downloader.py`.
+    *   *Outcome:* Python module capable of managing download/cache for multi-component models.
+*   [x] **3.3: Integrate Model Loading into `pypostal`:**
+    *   [x] Action: Identified C API calls (`libpostal_setup_datadir`, `libpostal_setup_language_classifier_datadir`, `libpostal_setup_parser_datadir`).
+    *   [x] Action: Created new C extension `postal/_capi.c` with `setup_datadir` function wrapping the C API calls.
+    *   [x] Action: Updated `setup.py` to build the `_capi` extension.
+    *   [x] Action: Removed automatic initialization logic from existing C extensions (`_expand`, `_parser`, etc.).
+    *   [x] Action: Created `postal.initialize(model_key='default')` function in `postal/__init__.py`.
+    *   [x] Action: `initialize` checks `LIBPOSTAL_DATA_DIR` env var first, then falls back to downloader cache (`get_data_dir`).
+    *   [x] Action: `initialize` calls `_capi.setup_datadir`.
+    *   [x] Action: Implemented `PostalDataNotFound` exception with helpful message.
+    *   [x] Action: Exposed `download_model` publicly via `postal/__init__.py`.
+    *   *Outcome:* `pypostal` uses explicit `initialize()` call to configure C library via downloader cache or env var. Requires `initialize()` before use.
+*   [x] **3.4: Update CI Test Command:**
+    *   [x] Action: Modified `CIBW_TEST_COMMAND` to point to `scripts/test_wheel.py`.
+    *   [x] Action: Updated `scripts/test_wheel.py` to call `postal.download_model()` and `postal.initialize()` before running functional tests.
+    *   *Outcome:* CI tests validate the download and initialization mechanism.
 
 ---
 
@@ -152,20 +120,21 @@
 *   [ ] **4.1: Update `README.md`:**
     *   [ ] Action: Replace installation instructions with `pip install pypostal`.
     *   [ ] Action: Remove prerequisites about compiling `libpostal`.
-    *   [ ] Action: Add section explaining automatic model downloading and caching.
-    *   [ ] Action: Document `postal.download_model()` usage.
-    *   [ ] Action: Document how to specify different model versions if implemented.
-    *   [ ] Action: Update examples if initialization changed.
+    *   [ ] Action: Add section explaining automatic model downloading/caching and the `LIBPOSTAL_DATA_DIR` precedence.
+    *   [ ] Action: Document `postal.initialize()` and its mandatory nature.
+    *   [ ] Action: Document `postal.download_model()` usage (including `version` and `force` args).
+    *   [ ] Action: Document how to specify different model versions (`default`, `senzing`).
+    *   [ ] Action: Update examples to include `postal.initialize()`.
     *   *Outcome:* README accurately reflects the new user experience.
-*   [ ] **4.2: Add Unit & Integration Tests:**
-    *   [ ] Action: Add unit tests for `postal.downloader` (mocking network, filesystem).
+*   [~] **4.2: Add Unit & Integration Tests:**
+    *   [x] Action: Added unit tests for `postal.downloader` with mocks.
     *   [ ] Action: Add integration tests (using `pytest`?) that:
         *   Perform actual downloads (can be marked or skipped in environments without network).
-        *   Verify initialization works with downloaded data.
-        *   Test `expand_address` and `parse_address` with known inputs/outputs.
-        *   Test error handling when data is missing.
-    *   [ ] Action: Integrate test execution into the CI workflow (run after wheel installation).
-    *   *Outcome:* Robust test suite validating core functionality.
+        *   Verify initialization works with downloaded data for both `default` and `senzing` models.
+        *   Test `expand_address` and `parse_address` with known inputs/outputs for both models.
+        *   Test error handling when data is missing or invalid.
+    *   [ ] Action: Integrate test execution into the CI workflow (run after wheel installation, potentially separate from `cibuildwheel` test step).
+    *   *Outcome:* Basic downloader tests exist. Need comprehensive integration tests.
 
 ---
 
@@ -189,9 +158,10 @@
     *   Explore native NEON intrinsics for ARM performance if `sse2neon.h` translation is insufficient.
     *   Profile other potential bottlenecks (string handling, memory allocation).
 *   **Model Management:**
-*   Support for alternative models (e.g., `MODEL=senzing`).
-*   Configuration options for cache directory location.
-*   Allowing users to provide pre-downloaded/extracted model data directories.
+    *   [x] Support for alternative models (e.g., `MODEL=senzing`): Implemented via `postal.initialize(model_key=...)` and `models.json` manifest.
+    *   [x] Configuration options for cache directory location: Handled via `LIBPOSTAL_DATA_DIR` env var precedence.
+    *   [x] Allowing users to provide pre-downloaded/extracted model data directories: Handled via `LIBPOSTAL_DATA_DIR` env var precedence.
 *   **Build Process:**
-*   Investigate static linking vs shared library bundling trade-offs more deeply.
+    *   Investigate static linking vs shared library bundling trade-offs more deeply.
     *   Refine error handling and reporting in custom build steps.
+    *   Revisit build cleaning (`git clean -fdx` vs `make distclean`) if macOS build stability issues reappear.

@@ -37,8 +37,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "platformdirs>=4.0.0",
+    "requests>=2.31.0",
     "six",
     # Downloader dependencies (requests, platformdirs, tqdm) will be added in Phase 3
+    "tqdm>=4.67.1",
 ]
 
 [project.urls]

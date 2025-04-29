@@ -119,8 +119,10 @@ init_tokenize(void) {
     PyObject *module = Py_InitModule("_tokenize", tokenize_methods);
 #endif
 
-    if (module == NULL)
+    if (module == NULL) {
         INITERROR;
+    }
+
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_tokenize.Error", NULL, NULL);
