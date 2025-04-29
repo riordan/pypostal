@@ -12,13 +12,7 @@ struct module_state {
     PyObject *error;
 };
 
-
-#ifdef IS_PY3K
-    #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-    #define GETSTATE(m) (&_state)
-    static struct module_state _state;
-#endif
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 
 static PyObject *py_tokenize(PyObject *self, PyObject *args) 
 {
@@ -77,7 +71,7 @@ static PyMethodDef tokenize_methods[] = {
     {NULL, NULL},
 };
 
-#ifdef IS_PY3K
+// --- Python 3 Module Definition & Initialization --- 
 
 static int tokenize_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->error);
@@ -89,53 +83,35 @@ static int tokenize_clear(PyObject *m) {
     return 0;
 }
 
-
 static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT,
-        "_tokenize",
-        NULL,
-        sizeof(struct module_state),
-        tokenize_methods,
-        NULL,
-        tokenize_traverse,
-        tokenize_clear,
-        NULL
+    PyModuleDef_HEAD_INIT,
+    "_tokenize",
+    NULL,
+    sizeof(struct module_state),
+    tokenize_methods,
+    NULL,
+    tokenize_traverse,
+    tokenize_clear,
+    NULL
 };
 
-#define INITERROR return NULL
-
 PyObject *
-PyInit__tokenize(void) {
-#else
-#define INITERROR return
-
-void
-init_tokenize(void) {
-#endif
-
-#ifdef IS_PY3K
+PyInit__tokenize(void) { // Python 3 only
     PyObject *module = PyModule_Create(&module_def);
-#else
-    PyObject *module = Py_InitModule("_tokenize", tokenize_methods);
-#endif
 
     if (module == NULL) {
-        INITERROR;
+        return NULL;
     }
 
-    // No setup block was present here, but adding comment for consistency
-    /* REMOVED: Automatic libpostal setup calls (if any were present). 
-       Initialization is now handled explicitly via postal.initialize(). */
+    /* REMOVED: Automatic libpostal setup calls (if any were present). */
 
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_tokenize.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
-        INITERROR;
+        return NULL;
     }
 
-#if PY_MAJOR_VERSION >= 3
     return module;
-#endif
 }

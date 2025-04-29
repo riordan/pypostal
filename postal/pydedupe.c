@@ -11,14 +11,7 @@ struct module_state {
     PyObject *error;
 };
 
-
-#ifdef IS_PY3K
-    #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-    #define GETSTATE(m) (&_state)
-    static struct module_state _state;
-#endif
-
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 
 static PyObject *py_place_languages(PyObject *self, PyObject *args) {
     PyObject *arg_labels;
@@ -65,10 +58,7 @@ static PyObject *py_place_languages(PyObject *self, PyObject *args) {
     return result;
 }
 
-
-
 typedef libpostal_duplicate_status_t (*duplicate_function)(char *, char *, libpostal_duplicate_options_t);
-
 
 static PyObject *py_is_duplicate(PyObject *self, PyObject *args, PyObject *keywords, duplicate_function dupe_func) {
     PyObject *arg_value1;
@@ -136,7 +126,6 @@ static PyObject *py_is_duplicate(PyObject *self, PyObject *args, PyObject *keywo
 
     return result;
 }
-
 
 static PyObject *py_is_name_duplicate(PyObject *self, PyObject *args, PyObject *keywords) {
     return py_is_duplicate(self, args, keywords, libpostal_is_name_duplicate);
@@ -439,11 +428,9 @@ static PyObject *py_is_duplicate_fuzzy(PyObject *self, PyObject *args, PyObject 
     return result;
 }
 
-
 static PyObject *py_is_name_duplicate_fuzzy(PyObject *self, PyObject *args, PyObject *keywords) {
     return py_is_duplicate_fuzzy(self, args, keywords, libpostal_is_name_duplicate_fuzzy);
 }
-
 
 static PyObject *py_is_street_duplicate_fuzzy(PyObject *self, PyObject *args, PyObject *keywords) {
     return py_is_duplicate_fuzzy(self, args, keywords, libpostal_is_street_duplicate_fuzzy);
@@ -464,8 +451,6 @@ static PyMethodDef dedupe_methods[] = {
     {NULL, NULL},
 };
 
-#ifdef IS_PY3K
-
 static int dedupe_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->error);
     return 0;
@@ -473,69 +458,35 @@ static int dedupe_traverse(PyObject *m, visitproc visit, void *arg) {
 
 static int dedupe_clear(PyObject *m) {
     Py_CLEAR(GETSTATE(m)->error);
-    libpostal_teardown_language_classifier();
-    libpostal_teardown();
     return 0;
 }
 
 static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT,
-        "_dedupe",
-        NULL,
-        sizeof(struct module_state),
-        dedupe_methods,
-        NULL,
-        dedupe_traverse,
-        dedupe_clear,
-        NULL
+    PyModuleDef_HEAD_INIT,
+    "_dedupe",
+    NULL,
+    sizeof(struct module_state),
+    dedupe_methods,
+    NULL,
+    dedupe_traverse,
+    dedupe_clear,
+    NULL
 };
-
-#define INITERROR return NULL
 
 PyObject *
 PyInit__dedupe(void) {
-
-#else
-
-#define INITERROR return
-
-void cleanup_libpostal(void) {
-    libpostal_teardown();
-    libpostal_teardown_language_classifier();
-}
-
-void
-init_dedupe(void) {
-
-#endif
-
-#ifdef IS_PY3K
     PyObject *module = PyModule_Create(&module_def);
-#else
-    PyObject *module = Py_InitModule("_dedupe", dedupe_methods);
-#endif
 
     if (module == NULL) {
-        INITERROR;
+        return NULL;
     }
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_dedupe.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
-        INITERROR;
+        return NULL;
     }
-
-    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
-       explicitly via postal.initialize() which calls _capi.setup_datadir().
-    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
-
-    if (((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir))) ||
-        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
-            PyErr_SetString(PyExc_TypeError,
-                            "Error loading libpostal");
-    }
-    */
 
     PyModule_AddObject(module, "NULL_DUPLICATE_STATUS", PyLong_FromSsize_t(LIBPOSTAL_NULL_DUPLICATE_STATUS));
     PyModule_AddObject(module, "NON_DUPLICATE", PyLong_FromSsize_t(LIBPOSTAL_NON_DUPLICATE));
@@ -543,11 +494,5 @@ init_dedupe(void) {
     PyModule_AddObject(module, "LIKELY_DUPLICATE", PyLong_FromSsize_t(LIBPOSTAL_LIKELY_DUPLICATE));
     PyModule_AddObject(module, "EXACT_DUPLICATE", PyLong_FromSsize_t(LIBPOSTAL_EXACT_DUPLICATE));
 
-#ifndef IS_PY3K
-    Py_AtExit(&cleanup_libpostal);
-#endif
-
-#ifdef IS_PY3K
     return module;
-#endif
 }

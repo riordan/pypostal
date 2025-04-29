@@ -11,13 +11,7 @@ struct module_state {
     PyObject *error;
 };
 
-
-#ifdef IS_PY3K
-    #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-    #define GETSTATE(m) (&_state)
-    static struct module_state _state;
-#endif
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 
 static PyObject *py_normalize_string(PyObject *self, PyObject *args, PyObject *keywords)
 {
@@ -171,9 +165,7 @@ static PyMethodDef normalize_methods[] = {
     {NULL, NULL},
 };
 
-
-
-#ifdef IS_PY3K
+// --- Python 3 Module Definition & Initialization --- 
 
 static int normalize_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->error);
@@ -185,61 +177,35 @@ static int normalize_clear(PyObject *m) {
     return 0;
 }
 
-
 static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT,
-        "_normalize",
-        NULL,
-        sizeof(struct module_state),
-        normalize_methods,
-        NULL,
-        normalize_traverse,
-        normalize_clear,
-        NULL
+    PyModuleDef_HEAD_INIT,
+    "_normalize",
+    NULL,
+    sizeof(struct module_state),
+    normalize_methods,
+    NULL,
+    normalize_traverse,
+    normalize_clear,
+    NULL
 };
 
-#define INITERROR return NULL
-
 PyObject *
-PyInit__normalize(void) {
-#else
-#define INITERROR return
-
-void
-init_normalize(void) {
-#endif
-
-#ifdef IS_PY3K
+PyInit__normalize(void) { // Python 3 only
     PyObject *module = PyModule_Create(&module_def);
-#else
-    PyObject *module = Py_InitModule("_normalize", normalize_methods);
-#endif
 
     if (module == NULL) {
-        INITERROR;
+        return NULL;
     }
 
-    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
-       explicitly via postal.initialize() which calls _capi.setup_datadir().
-    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+    /* REMOVED: Automatic libpostal setup calls. */
 
-    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir)) ||
-        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
-            PyErr_SetString(PyExc_TypeError,
-                            "Error loading libpostal");
-    }
-    */
-
-    // Note: The #ifndef IS_PY3K block below is for Python 2 specific setup
-    // It should remain *outside* the C comment block.
-#ifndef IS_PY3K
-
+    // Python 2 specific block removed, constants added directly
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_normalize.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
-        INITERROR;
+        return NULL;
     }
 
     PyModule_AddObject(module, "NORMALIZE_STRING_LATIN_ASCII", PyLong_FromUnsignedLongLong(LIBPOSTAL_NORMALIZE_STRING_LATIN_ASCII));
@@ -271,8 +237,5 @@ init_normalize(void) {
 
     PyModule_AddObject(module, "NORMALIZE_DEFAULT_TOKEN_OPTIONS_NUMERIC", PyLong_FromUnsignedLongLong(LIBPOSTAL_NORMALIZE_DEFAULT_TOKEN_OPTIONS_NUMERIC));
 
-
-#if PY_MAJOR_VERSION >= 3
     return module;
-#endif
 }

@@ -11,13 +11,7 @@ struct module_state {
     PyObject *error;
 };
 
-
-#ifdef IS_PY3K
-    #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-    #define GETSTATE(m) (&_state)
-    static struct module_state _state;
-#endif
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 
 static PyObject *py_name_hashes(PyObject *self, PyObject *args, PyObject *keywords) {
     PyObject *arg_input;
@@ -302,9 +296,7 @@ static PyMethodDef near_dupe_methods[] = {
     {NULL, NULL},
 };
 
-
-
-#ifdef IS_PY3K
+// --- Python 3 Module Definition & Initialization --- 
 
 static int near_dupe_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->error);
@@ -313,78 +305,41 @@ static int near_dupe_traverse(PyObject *m, visitproc visit, void *arg) {
 
 static int near_dupe_clear(PyObject *m) {
     Py_CLEAR(GETSTATE(m)->error);
-    libpostal_teardown_language_classifier();
-    libpostal_teardown();
+    // Consider removing teardown
+    // libpostal_teardown_language_classifier();
+    // libpostal_teardown();
     return 0;
 }
 
 static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT,
-        "_near_dupe",
-        NULL,
-        sizeof(struct module_state),
-        near_dupe_methods,
-        NULL,
-        near_dupe_traverse,
-        near_dupe_clear,
-        NULL
+    PyModuleDef_HEAD_INIT,
+    "_near_dupe",
+    NULL,
+    sizeof(struct module_state),
+    near_dupe_methods,
+    NULL,
+    near_dupe_traverse,
+    near_dupe_clear,
+    NULL
 };
 
-#define INITERROR return NULL
-
 PyObject *
-PyInit__near_dupe(void) {
-
-#else
-
-#define INITERROR return
-
-void cleanup_libpostal(void) {
-    libpostal_teardown();
-    libpostal_teardown_language_classifier();
-}
-
-void
-init_near_dupe(void) {
-
-#endif
-
-#ifdef IS_PY3K
+PyInit__near_dupe(void) { // Python 3 only
     PyObject *module = PyModule_Create(&module_def);
-#else
-    PyObject *module = Py_InitModule("_near_dupe", near_dupe_methods);
-#endif
 
     if (module == NULL) {
-        INITERROR;
+        return NULL;
     }
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_near_dupe.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
-        INITERROR;
+        return NULL;
     }
 
-    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
-       explicitly via postal.initialize() which calls _capi.setup_datadir().
-    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+    /* REMOVED: Automatic libpostal setup calls. */
 
-    if ((datadir!=NULL && !libpostal_setup_datadir(datadir)) || !libpostal_setup()) {
-             PyErr_SetString(PyExc_RuntimeError,
-                             "Could not load libpostal");
-             Py_DECREF(module);
-             INITERROR;
-    }
-    */
-    
-    // #ifndef IS_PY3K block should be *outside* the comment
-#ifndef IS_PY3K
-    Py_AtExit(&cleanup_libpostal);
-#endif
-
-#ifdef IS_PY3K
     return module;
-#endif
 }
 

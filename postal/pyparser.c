@@ -10,14 +10,7 @@ struct module_state {
     PyObject *error;
 };
 
-
-#ifdef IS_PY3K
-    #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-    #define GETSTATE(m) (&_state)
-    static struct module_state _state;
-#endif
-
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 
 static PyObject *py_parse_address(PyObject *self, PyObject *args, PyObject *keywords) {
     PyObject *arg_input;
@@ -130,9 +123,7 @@ static PyMethodDef parser_methods[] = {
     {NULL, NULL},
 };
 
-
-
-#ifdef IS_PY3K
+// --- Python 3 Module Definition & Initialization --- 
 
 static int parser_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->error);
@@ -141,75 +132,41 @@ static int parser_traverse(PyObject *m, visitproc visit, void *arg) {
 
 static int parser_clear(PyObject *m) {
     Py_CLEAR(GETSTATE(m)->error);
-    libpostal_teardown();
-    libpostal_teardown_parser();
+    // Consider removing teardown - see comment in _expand
+    // libpostal_teardown(); 
+    // libpostal_teardown_parser();
     return 0;
 }
 
 static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT,
-        "_parser",
-        NULL,
-        sizeof(struct module_state),
-        parser_methods,
-        NULL,
-        parser_traverse,
-        parser_clear,
-        NULL
+    PyModuleDef_HEAD_INIT,
+    "_parser",
+    NULL,
+    sizeof(struct module_state),
+    parser_methods,
+    NULL,
+    parser_traverse,
+    parser_clear,
+    NULL
 };
 
-#define INITERROR return NULL
-
 PyObject *
-PyInit__parser(void) {
-#else
-
-#define INITERROR return
-
-void cleanup_libpostal(void) {
-    libpostal_teardown();
-    libpostal_teardown_parser(); 
-}
-
-void
-init_parser(void) {
-#endif
-
-#ifdef IS_PY3K
+PyInit__parser(void) { // Python 3 only
     PyObject *module = PyModule_Create(&module_def);
-#else
-    PyObject *module = Py_InitModule("_parser", parser_methods);
-#endif
 
     if (module == NULL) {
-        INITERROR;
+        return NULL;
     }
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_parser.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
-        INITERROR;
+        return NULL;
     }
 
-    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
-       explicitly via postal.initialize() which calls _capi.setup_datadir().
-    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+    /* REMOVED: Automatic libpostal setup calls. */
 
-    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_parser_datadir(datadir)) ||
-        (!libpostal_setup() || !libpostal_setup_parser())) {
-            PyErr_SetString(PyExc_TypeError,
-                            "Error loading libpostal data");
-    }
-    */
-
-    // #ifndef IS_PY3K block should be *outside* the comment
-#ifndef IS_PY3K
-    Py_AtExit(&cleanup_libpostal);
-#endif
-
-#ifdef IS_PY3K
     return module;
-#endif
 }
 
