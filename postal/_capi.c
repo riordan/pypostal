@@ -27,33 +27,33 @@ static PyObject *py_setup_datadir(PyObject *self, PyObject *args) {
         return NULL; 
     }
 
-    // Set paths and load models sequentially
-    bool setup_ok = libpostal_setup_datadir(datadir) && // Set base path
-                    libpostal_setup() && // Load base/language models
-                    libpostal_setup_parser_datadir(datadir) && // Set parser path
-                    libpostal_setup_parser() && // Load parser models
-                    libpostal_setup_language_classifier_datadir(datadir); // Set LC path (might be redundant if setup() handles it, but explicit)
-                    // Assuming language classifier is loaded by libpostal_setup()
+    // 1. Set all datadirs first
+    bool paths_ok = libpostal_setup_datadir(datadir) && 
+                    libpostal_setup_language_classifier_datadir(datadir) &&
+                    libpostal_setup_parser_datadir(datadir); 
 
     Py_XDECREF(py_bytes); 
 
-    if (!setup_ok) {
-        // Added more detail to the error
-        PyErr_Format(PyExc_RuntimeError, "libpostal setup sequence failed for path: %s. Check data file integrity and setup function order.", datadir);
+    if (!paths_ok) {
+        // Updated error message
+        PyErr_Format(PyExc_RuntimeError, "Failed setting libpostal datadirs to path: %s", datadir);
         return NULL; 
     }
 
-    // Now load the models using the configured paths (REMOVED - Handled above)
-    /*
-    bool setup_load_ok = libpostal_setup() && // Load base/language models
-                         libpostal_setup_parser(); // Load parser models
-    // Note: libpostal_setup_language_classifier() might be implicitly called by libpostal_setup()
-    
-    if (!setup_load_ok) {
-        PyErr_SetString(PyExc_RuntimeError, "libpostal model loading (setup/setup_parser) failed");
-        return NULL;
+    // 2. Load base/language models
+    if (!libpostal_setup()) {
+         PyErr_SetString(PyExc_RuntimeError, "libpostal_setup() failed.");
+         return NULL;
     }
-    */
+
+    // 3. Load parser models
+    if (!libpostal_setup_parser()) {
+         PyErr_SetString(PyExc_RuntimeError, "libpostal_setup_parser() failed.");
+         return NULL;
+    }
+
+    // Note: Assuming language classifier is handled by libpostal_setup()
+    // Based on libpostal cli tools not calling libpostal_setup_language_classifier() explicitly after paths.
 
     Py_RETURN_TRUE; // Indicate success
 }
