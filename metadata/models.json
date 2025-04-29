@@ -1,0 +1,38 @@
+{
+  "default": {
+    "base": {
+      "url": "https://github.com/openvenues/libpostal/releases/download/v1.0.0/libpostal_data.tar.gz",
+      "sha256": "d2ec50587bf3a7e46e18e5dcde32419134266f90774e3956f2c2f90d818ff9a1",
+      "version": "v1.0.0"
+    },
+    "parser": {
+      "url": "https://github.com/openvenues/libpostal/releases/download/v1.0.0/parser.tar.gz",
+      "sha256": "7194e9b0095f71aecb861269f675e50703e73e352a0b9d41c60f8d8ef5a03624",
+      "version": "v1.0.0"
+    },
+    "language_classifier": {
+      "url": "https://github.com/openvenues/libpostal/releases/download/v1.0.0/language_classifier.tar.gz",
+      "sha256": "16a6ecb6d37e7e25d8fe514255666852ab9dbd4d9cc762f64cf1e15b4369a277",
+      "version": "v1.0.0"
+    },
+    "version_detail": "Standard libpostal v1.0.0 data"
+  },
+  "senzing": {
+    "base": {
+        "url": "https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/libpostal_data.tar.gz",
+        "sha256": "f107e5139831cbac79d66ca231d7a2e2f657401e9149da81ab87bb8f7cfb32f9",
+        "version": "v1.1.0"
+    },
+    "parser": {
+        "url": "https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/parser.tar.gz",
+        "sha256": "b3998c291f4373f46ec5cf6fd9ffd1a225cfbf58e714ec45c17d950a687ea1a6",
+        "version": "v1.1.0"
+    },
+    "language_classifier": {
+        "url": "https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/language_classifier.tar.gz",
+        "sha256": "16a6ecb6d37e7e25d8fe514255666852ab9dbd4d9cc762f64cf1e15b4369a277",
+        "version": "v1.1.0"
+    },
+    "version_detail": "Senzing GNR libpostal data v1.1.0"
+  }
+} 

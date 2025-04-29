@@ -107,6 +107,8 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          # Point downloader to the manifest in the checked-out commit
+          PYPOSTAL_MANIFEST_URL: "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/metadata/models.json"
         with:
           output-dir: wheelhouse
 

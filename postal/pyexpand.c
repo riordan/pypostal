@@ -10,14 +10,7 @@ struct module_state {
     PyObject *error;
 };
 
-
-#ifdef IS_PY3K
-    #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-    #define GETSTATE(m) (&_state)
-    static struct module_state _state;
-#endif
-
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 
 static PyObject *py_expand(PyObject *self, PyObject *args, PyObject *keywords) {
     PyObject *arg_input;
@@ -165,9 +158,7 @@ static PyMethodDef expand_methods[] = {
     {NULL, NULL},
 };
 
-
-
-#ifdef IS_PY3K
+// --- Python 3 Module Definition & Initialization --- 
 
 static int expand_traverse(PyObject *m, visitproc visit, void *arg) {
     Py_VISIT(GETSTATE(m)->error);
@@ -176,66 +167,44 @@ static int expand_traverse(PyObject *m, visitproc visit, void *arg) {
 
 static int expand_clear(PyObject *m) {
     Py_CLEAR(GETSTATE(m)->error);
-    libpostal_teardown_language_classifier();
-    libpostal_teardown();
+    // Teardown functions are typically called when the interpreter exits,
+    // but libpostal setup is now managed explicitly by initialize(),
+    // so explicit teardown here might be unnecessary or even problematic
+    // if the library is needed by other modules after this one clears.
+    // Consider removing these if teardown is handled globally or not needed per-module.
+    // libpostal_teardown_language_classifier(); 
+    // libpostal_teardown();
     return 0;
 }
 
 static struct PyModuleDef module_def = {
-        PyModuleDef_HEAD_INIT,
-        "_expand",
-        NULL,
-        sizeof(struct module_state),
-        expand_methods,
-        NULL,
-        expand_traverse,
-        expand_clear,
-        NULL
+    PyModuleDef_HEAD_INIT,
+    "_expand",
+    NULL,
+    sizeof(struct module_state),
+    expand_methods,
+    NULL,
+    expand_traverse,
+    expand_clear,
+    NULL
 };
 
-#define INITERROR return NULL
-
 PyObject *
-PyInit__expand(void) {
-
-#else
-
-#define INITERROR return
-
-void cleanup_libpostal(void) {
-    libpostal_teardown();
-    libpostal_teardown_language_classifier();
-}
-
-void
-init_expand(void) {
-
-#endif
-
-#ifdef IS_PY3K
+PyInit__expand(void) { // Python 3 only
     PyObject *module = PyModule_Create(&module_def);
-#else
-    PyObject *module = Py_InitModule("_expand", expand_methods);
-#endif
 
     if (module == NULL) {
-        INITERROR;
+        return NULL;
     }
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_expand.Error", NULL, NULL);
     if (st->error == NULL) {
         Py_DECREF(module);
-        INITERROR;
+        return NULL;
     }
 
-   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
-
-    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir)) ||
-        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
-            PyErr_SetString(PyExc_TypeError,
-                            "Error loading libpostal");
-    }
+    /* REMOVED: Automatic libpostal setup calls. */
 
     PyModule_AddObject(module, "ADDRESS_NONE", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_NONE));
     PyModule_AddObject(module, "ADDRESS_ANY", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_ANY));
@@ -253,12 +222,6 @@ init_expand(void) {
     PyModule_AddObject(module, "ADDRESS_PO_BOX", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_PO_BOX));
     PyModule_AddObject(module, "ADDRESS_ALL", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_ALL));
 
-#ifndef IS_PY3K
-    Py_AtExit(&cleanup_libpostal);
-#endif
-
-#ifdef IS_PY3K
     return module;
-#endif
 }
 

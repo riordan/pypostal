@@ -535,6 +535,11 @@ def main():
                   libraries=['postal'],
                   extra_compile_args=['-std=c99'],
                   ),
+        Extension('postal._capi',
+                  sources=['postal/_capi.c'],
+                  libraries=['postal'],
+                  # No extra compile args needed unless specific C features are used
+                  ),
     ]
 
     setup(
