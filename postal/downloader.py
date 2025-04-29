@@ -13,7 +13,11 @@ from tqdm.auto import tqdm
 from typing import Dict, List, Optional, Any, Union
 
 # Define manifest URL pointing to the raw file on the master branch
-MANIFEST_URL = "https://raw.githubusercontent.com/riordan/pypostal/master/metadata/models.json"
+# Allow overriding via environment variable for CI testing
+MANIFEST_URL = os.getenv(
+    "PYPOSTAL_MANIFEST_URL", 
+    "https://raw.githubusercontent.com/riordan/pypostal/master/metadata/models.json" # Default fallback
+)
 
 _manifest_cache: Optional[Dict[str, Any]] = None
 
