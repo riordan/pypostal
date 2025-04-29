@@ -27,15 +27,28 @@ static PyObject *py_setup_datadir(PyObject *self, PyObject *args) {
         return NULL; 
     }
 
-    bool setup_ok = libpostal_setup_datadir(datadir) && 
-                    libpostal_setup_language_classifier_datadir(datadir) &&
-                    libpostal_setup_parser_datadir(datadir); // Setup all components
+    // Set data directories
+    bool setup_paths_ok = libpostal_setup_datadir(datadir) && 
+                          libpostal_setup_language_classifier_datadir(datadir) &&
+                          libpostal_setup_parser_datadir(datadir); // Setup all components
 
     Py_XDECREF(py_bytes); 
 
-    if (!setup_ok) {
-        PyErr_Format(PyExc_RuntimeError, "libpostal setup failed for path: %s", datadir);
+    if (!setup_paths_ok) {
+        PyErr_Format(PyExc_RuntimeError, "libpostal_setup_datadir failed for path: %s", datadir);
         return NULL; 
+    }
+
+    // Now load the models using the configured paths
+    bool setup_load_ok = libpostal_setup() && // Load base models
+                         libpostal_setup_parser() && // Load parser models
+                         libpostal_setup_language_classifier(); // Load language classifier models
+    
+    if (!setup_load_ok) {
+        PyErr_SetString(PyExc_RuntimeError, "libpostal model loading failed (data files might be corrupted or incorrect?)");
+        // Optionally call teardown functions here to ensure clean state?
+        // libpostal_teardown...
+        return NULL;
     }
 
     Py_RETURN_TRUE; // Indicate success
