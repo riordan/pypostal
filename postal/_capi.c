@@ -39,15 +39,13 @@ static PyObject *py_setup_datadir(PyObject *self, PyObject *args) {
         return NULL; 
     }
 
-    // Now load the models using the configured paths
-    bool setup_load_ok = libpostal_setup() && // Load base models
-                         libpostal_setup_parser() && // Load parser models
-                         libpostal_setup_language_classifier(); // Load language classifier models
+    // Now load the models in the likely intended order
+    bool setup_load_ok = libpostal_setup() && // Load base/language models
+                         libpostal_setup_parser(); // Load parser models
+    // Note: libpostal_setup_language_classifier() might be implicitly called by libpostal_setup()
     
     if (!setup_load_ok) {
-        PyErr_SetString(PyExc_RuntimeError, "libpostal model loading failed (data files might be corrupted or incorrect?)");
-        // Optionally call teardown functions here to ensure clean state?
-        // libpostal_teardown...
+        PyErr_SetString(PyExc_RuntimeError, "libpostal model loading (setup/setup_parser) failed");
         return NULL;
     }
 
