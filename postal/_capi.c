@@ -1,4 +1,3 @@
-# postal/_capi.c
 #include <Python.h>
 #include <libpostal/libpostal.h>
 #include "pyutils.h" // For PyObject_to_string, maybe? Or handle string directly.
