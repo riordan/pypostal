@@ -219,15 +219,16 @@ init_normalize(void) {
         INITERROR;
     }
 
-   // REMOVED: Automatic libpostal setup calls. Initialization is now handled
-   // explicitly via postal.initialize() which calls _capi.setup_datadir().
-#   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
-#
-#    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir)) ||
-#        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
-#            PyErr_SetString(PyExc_TypeError,
-#                            "Error loading libpostal");
-#    }
+   /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
+      explicitly via postal.initialize() which calls _capi.setup_datadir().
+   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+
+    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir)) ||
+        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
+            PyErr_SetString(PyExc_TypeError,
+                            "Error loading libpostal");
+    }
+   */
 
 #ifndef IS_PY3K
 

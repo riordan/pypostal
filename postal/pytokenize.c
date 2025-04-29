@@ -123,6 +123,10 @@ init_tokenize(void) {
         INITERROR;
     }
 
+    // No setup block was present here, but adding comment for consistency
+    /* REMOVED: Automatic libpostal setup calls (if any were present). 
+       Initialization is now handled explicitly via postal.initialize(). */
+
     struct module_state *st = GETSTATE(module);
 
     st->error = PyErr_NewException("_tokenize.Error", NULL, NULL);

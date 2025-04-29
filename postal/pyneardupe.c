@@ -366,16 +366,17 @@ init_near_dupe(void) {
         INITERROR;
     }
 
-   // REMOVED: Automatic libpostal setup calls. Initialization is now handled
-   // explicitly via postal.initialize() which calls _capi.setup_datadir().
-#   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
-#
-#    if ((datadir!=NULL && !libpostal_setup_datadir(datadir)) || !libpostal_setup()) {
-#             PyErr_SetString(PyExc_RuntimeError,
-#                             "Could not load libpostal");
-#             Py_DECREF(module);
-#             INITERROR;
-#    }
+   /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
+      explicitly via postal.initialize() which calls _capi.setup_datadir().
+   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+
+    if ((datadir!=NULL && !libpostal_setup_datadir(datadir)) || !libpostal_setup()) {
+             PyErr_SetString(PyExc_RuntimeError,
+                             "Could not load libpostal");
+             Py_DECREF(module);
+             INITERROR;
+    }
+   */
 
 #ifndef IS_PY3K
     Py_AtExit(&cleanup_libpostal);

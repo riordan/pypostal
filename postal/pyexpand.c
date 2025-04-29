@@ -229,6 +229,17 @@ init_expand(void) {
         INITERROR;
     }
 
+    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
+       explicitly via postal.initialize() which calls _capi.setup_datadir().
+    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+
+    if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir)) ||
+        (!libpostal_setup() || !libpostal_setup_language_classifier())) {
+            PyErr_SetString(PyExc_TypeError,
+                            "Error loading libpostal");
+    }
+    */
+
     PyModule_AddObject(module, "ADDRESS_NONE", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_NONE));
     PyModule_AddObject(module, "ADDRESS_ANY", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_ANY));
     PyModule_AddObject(module, "ADDRESS_NAME", PyLong_FromUnsignedLongLong(LIBPOSTAL_ADDRESS_NAME));
