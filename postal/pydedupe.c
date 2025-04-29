@@ -526,16 +526,16 @@ init_dedupe(void) {
         INITERROR;
     }
 
-   /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
-      explicitly via postal.initialize() which calls _capi.setup_datadir().
-   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
+       explicitly via postal.initialize() which calls _capi.setup_datadir().
+    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
 
     if (((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_language_classifier_datadir(datadir))) ||
         (!libpostal_setup() || !libpostal_setup_language_classifier())) {
             PyErr_SetString(PyExc_TypeError,
                             "Error loading libpostal");
     }
-   */
+    */
 
     PyModule_AddObject(module, "NULL_DUPLICATE_STATUS", PyLong_FromSsize_t(LIBPOSTAL_NULL_DUPLICATE_STATUS));
     PyModule_AddObject(module, "NON_DUPLICATE", PyLong_FromSsize_t(LIBPOSTAL_NON_DUPLICATE));

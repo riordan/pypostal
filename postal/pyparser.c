@@ -192,20 +192,21 @@ init_parser(void) {
         INITERROR;
     }
 
-#ifndef IS_PY3K
-    Py_AtExit(&cleanup_libpostal);
-#endif
-
-   /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
-      explicitly via postal.initialize() which calls _capi.setup_datadir().
-   char* datadir = getenv("LIBPOSTAL_DATA_DIR");
+    /* REMOVED: Automatic libpostal setup calls. Initialization is now handled
+       explicitly via postal.initialize() which calls _capi.setup_datadir().
+    char* datadir = getenv("LIBPOSTAL_DATA_DIR");
 
     if ((datadir!=NULL) && (!libpostal_setup_datadir(datadir) || !libpostal_setup_parser_datadir(datadir)) ||
         (!libpostal_setup() || !libpostal_setup_parser())) {
             PyErr_SetString(PyExc_TypeError,
                             "Error loading libpostal data");
     }
-   */
+    */
+
+    // #ifndef IS_PY3K block should be *outside* the comment
+#ifndef IS_PY3K
+    Py_AtExit(&cleanup_libpostal);
+#endif
 
 #ifdef IS_PY3K
     return module;
